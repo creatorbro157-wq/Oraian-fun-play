@@ -82,6 +82,13 @@ MINES_LOSS_DIALOGUES = [
 ]
 
 
+def btn(text: str, callback_data: str, style: Optional[str] = None) -> InlineKeyboardButton:
+    """Stylish button helper: style can be 'primary' (blue), 'success' (green), or 'danger' (red)."""
+    if style in ("primary", "success", "danger"):
+        return InlineKeyboardButton(text, callback_data=callback_data, api_kwargs={"style": style})
+    return InlineKeyboardButton(text, callback_data=callback_data)
+
+
 class DatabaseManager:
     def __init__(self, uri: str, db_name: str) -> None:
         self.use_mongo = False
@@ -403,7 +410,6 @@ def fmt_duration(seconds: float) -> str:
 
 
 def generate_aviator_crash() -> float:
-    # Random crash between 1.0x and 7.0x in smooth 0.2x steps, weighted so every flight feels unique
     r = random.random()
     if r < 0.12:
         raw = 1.0
@@ -484,33 +490,33 @@ async def schedule_delete_messages(
 def main_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("💣 Mines", callback_data="menu_mines"),
-            InlineKeyboardButton("✈️ Aviator", callback_data="pick_game:aviator"),
+            btn("💣 Mines", "menu_mines", "primary"),
+            btn("🚀 Aviator", "pick_game:aviator", "success"),
         ],
         [
-            InlineKeyboardButton("✊ R-P-S", callback_data="pick_game:rps"),
-            InlineKeyboardButton("🔼 Hi-Lo", callback_data="pick_game:hilo"),
+            btn("✊ R-P-S", "pick_game:rps", "success"),
+            btn("🔼 Hi-Lo", "pick_game:hilo", "primary"),
         ],
         [
-            InlineKeyboardButton("🎯 5x5 TicTacToe", callback_data="ttt5_start"),
-            InlineKeyboardButton("🪙 Coin Flip", callback_data="pick_game:flip"),
+            btn("🎯 5x5 TicTacToe", "ttt5_start", "primary"),
+            btn("🪙 Coin Flip", "pick_game:flip", "success"),
         ],
         [
-            InlineKeyboardButton("🎲 Dice", callback_data="pick_game:dice"),
-            InlineKeyboardButton("🎰 Slots", callback_data="pick_game:slots"),
+            btn("🎲 Dice", "pick_game:dice", "success"),
+            btn("🎰 Slots", "pick_game:slots", "primary"),
         ],
         [
-            InlineKeyboardButton("🔢 Number Guess", callback_data="pick_game:guess"),
-            InlineKeyboardButton("🎡 Lucky Wheel", callback_data="pick_game:color"),
+            btn("🔢 Number Guess", "pick_game:guess", "primary"),
+            btn("🎡 Lucky Wheel", "pick_game:color", "success"),
         ],
         [
-            InlineKeyboardButton("🏀 Sports", callback_data="menu_sports"),
-            InlineKeyboardButton("🎁 Daily", callback_data="act_daily"),
+            btn("🏀 Sports", "menu_sports", "success"),
+            btn("🎁 Daily", "act_daily", "primary"),
         ],
         [
-            InlineKeyboardButton("👤 Profile", callback_data="act_profile"),
-            InlineKeyboardButton("🏆 Top", callback_data="act_top"),
-            InlineKeyboardButton("❓ Help", callback_data="act_help"),
+            btn("👤 Profile", "act_profile", "primary"),
+            btn("🏆 Top", "act_top", "success"),
+            btn("❓ Help", "act_help", "danger"),
         ],
     ])
 
@@ -518,30 +524,31 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
 def sports_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🏀 Basketball", callback_data="pick_game:sport_basket"),
-            InlineKeyboardButton("⚽ Football", callback_data="pick_game:sport_football"),
+            btn("🏀 Basketball", "pick_game:sport_basket", "primary"),
+            btn("⚽ Football", "pick_game:sport_football", "success"),
         ],
         [
-            InlineKeyboardButton("🎯 Darts", callback_data="pick_game:sport_darts"),
-            InlineKeyboardButton("🎳 Bowling", callback_data="pick_game:sport_bowling"),
+            btn("🎯 Darts", "pick_game:sport_darts", "success"),
+            btn("🎳 Bowling", "pick_game:sport_bowling", "primary"),
         ],
         [
-            InlineKeyboardButton("⬅️ Back", callback_data="menu_home"),
-            InlineKeyboardButton("❌ Close", callback_data="msg_close"),
+            btn("⬅️ Back", "menu_home", "primary"),
+            btn("❌ Close", "msg_close", "danger"),
         ],
     ])
 
 
 def mines_bomb_keyboard(user_id: int) -> InlineKeyboardMarkup:
+    styles = ["success", "primary", "primary", "success", "danger"]
     btns = [
-        InlineKeyboardButton(f"💣 {b}", callback_data=f"u:{user_id}:mines_bombs:{b}")
-        for b in MINES_BOMB_CHOICES
+        btn(f"💣 {b}", f"u:{user_id}:mines_bombs:{b}", styles[i])
+        for i, b in enumerate(MINES_BOMB_CHOICES)
     ]
     return InlineKeyboardMarkup([
         btns,
         [
-            InlineKeyboardButton("⬅️ Back", callback_data="menu_home"),
-            InlineKeyboardButton("❌ Close", callback_data="msg_close"),
+            btn("⬅️ Back", "menu_home", "primary"),
+            btn("❌ Close", "msg_close", "danger"),
         ],
     ])
 
@@ -553,23 +560,23 @@ def bet_keyboard(
     half_amt = max(10, user_coins // 2)
     max_amt = max(10, min(user_coins, 50000))
     row1 = [
-        InlineKeyboardButton(str(b), callback_data=f"u:{user_id}:bet:{game_prefix}:{b}{suffix}")
+        btn(str(b), f"u:{user_id}:bet:{game_prefix}:{b}{suffix}", "primary")
         for b in BET_OPTIONS[:3]
     ]
     row2 = [
-        InlineKeyboardButton(str(b), callback_data=f"u:{user_id}:bet:{game_prefix}:{b}{suffix}")
+        btn(str(b), f"u:{user_id}:bet:{game_prefix}:{b}{suffix}", "success")
         for b in BET_OPTIONS[3:]
     ]
     row3 = [
-        InlineKeyboardButton(f"½ Half ({half_amt})", callback_data=f"u:{user_id}:bet:{game_prefix}:{half_amt}{suffix}"),
-        InlineKeyboardButton(f"💥 Max ({max_amt})", callback_data=f"u:{user_id}:bet:{game_prefix}:{max_amt}{suffix}"),
+        btn(f"½ Half ({half_amt})", f"u:{user_id}:bet:{game_prefix}:{half_amt}{suffix}", "primary"),
+        btn(f"💥 Max ({max_amt})", f"u:{user_id}:bet:{game_prefix}:{max_amt}{suffix}", "danger"),
     ]
     rows = [row1, row2, row3]
     if user_coins <= 0:
-        rows.append([InlineKeyboardButton("🆘 Free refill", callback_data=f"u:{user_id}:refill_now")])
+        rows.append([btn("🆘 Free refill", f"u:{user_id}:refill_now", "success")])
     rows.append([
-        InlineKeyboardButton("⬅️ Back", callback_data="menu_home"),
-        InlineKeyboardButton("❌ Close", callback_data="msg_close"),
+        btn("⬅️ Back", "menu_home", "primary"),
+        btn("❌ Close", "msg_close", "danger"),
     ])
     return InlineKeyboardMarkup(rows)
 
@@ -578,115 +585,115 @@ def solo_choice_keyboard(user_id: int, game_type: str, bet: int, base_card: str 
     if game_type == "rps":
         return InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("🪨 Rock", callback_data=f"u:{user_id}:sgo:rps:{bet}:rock:none"),
-                InlineKeyboardButton("📄 Paper", callback_data=f"u:{user_id}:sgo:rps:{bet}:paper:none"),
-                InlineKeyboardButton("✂️ Scissors", callback_data=f"u:{user_id}:sgo:rps:{bet}:scissors:none"),
+                btn("🪨 Rock", f"u:{user_id}:sgo:rps:{bet}:rock:none", "primary"),
+                btn("📄 Paper", f"u:{user_id}:sgo:rps:{bet}:paper:none", "success"),
+                btn("✂️ Scissors", f"u:{user_id}:sgo:rps:{bet}:scissors:none", "primary"),
             ],
-            [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
+            [btn("❌ Close", "msg_close", "danger")],
         ])
     if game_type == "hilo":
         return InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("⬆️ Higher", callback_data=f"u:{user_id}:sgo:hilo:{bet}:high:{base_card}"),
-                InlineKeyboardButton("⬇️ Lower", callback_data=f"u:{user_id}:sgo:hilo:{bet}:low:{base_card}"),
+                btn("⬆️ Higher", f"u:{user_id}:sgo:hilo:{bet}:high:{base_card}", "success"),
+                btn("⬇️ Lower", f"u:{user_id}:sgo:hilo:{bet}:low:{base_card}", "primary"),
             ],
-            [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
+            [btn("❌ Close", "msg_close", "danger")],
         ])
     if game_type == "flip":
         return InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("👑 Heads", callback_data=f"u:{user_id}:sgo:flip:{bet}:heads:none"),
-                InlineKeyboardButton("🦅 Tails", callback_data=f"u:{user_id}:sgo:flip:{bet}:tails:none"),
+                btn("👑 Heads", f"u:{user_id}:sgo:flip:{bet}:heads:none", "primary"),
+                btn("🦅 Tails", f"u:{user_id}:sgo:flip:{bet}:tails:none", "success"),
             ],
-            [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
+            [btn("❌ Close", "msg_close", "danger")],
         ])
     if game_type == "dice":
         return InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("🔢 Odd (1,3,5)", callback_data=f"u:{user_id}:sgo:dice:{bet}:odd:none"),
-                InlineKeyboardButton("🔢 Even (2,4,6)", callback_data=f"u:{user_id}:sgo:dice:{bet}:even:none"),
-                InlineKeyboardButton("🎯 High (4-6)", callback_data=f"u:{user_id}:sgo:dice:{bet}:high:none"),
+                btn("🔢 Odd (1,3,5)", f"u:{user_id}:sgo:dice:{bet}:odd:none", "primary"),
+                btn("🔢 Even (2,4,6)", f"u:{user_id}:sgo:dice:{bet}:even:none", "success"),
+                btn("🎯 High (4-6)", f"u:{user_id}:sgo:dice:{bet}:high:none", "primary"),
             ],
-            [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
+            [btn("❌ Close", "msg_close", "danger")],
         ])
     if game_type == "guess":
-        r1 = [InlineKeyboardButton(str(n), callback_data=f"u:{user_id}:sgo:guess:{bet}:{n}:none") for n in range(1, 6)]
-        r2 = [InlineKeyboardButton(str(n), callback_data=f"u:{user_id}:sgo:guess:{bet}:{n}:none") for n in range(6, 11)]
-        return InlineKeyboardMarkup([r1, r2, [InlineKeyboardButton("❌ Close", callback_data="msg_close")]])
+        r1 = [btn(str(n), f"u:{user_id}:sgo:guess:{bet}:{n}:none", "primary") for n in range(1, 6)]
+        r2 = [btn(str(n), f"u:{user_id}:sgo:guess:{bet}:{n}:none", "success") for n in range(6, 11)]
+        return InlineKeyboardMarkup([r1, r2, [btn("❌ Close", "msg_close", "danger")]])
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🔴 Red (2x)", callback_data=f"u:{user_id}:sgo:color:{bet}:red:none"),
-            InlineKeyboardButton("🟢 Green (2x)", callback_data=f"u:{user_id}:sgo:color:{bet}:green:none"),
-            InlineKeyboardButton("🟣 Violet (4.5x)", callback_data=f"u:{user_id}:sgo:color:{bet}:violet:none"),
+            btn("🔴 Red (2x)", f"u:{user_id}:sgo:color:{bet}:red:none", "danger"),
+            btn("🟢 Green (2x)", f"u:{user_id}:sgo:color:{bet}:green:none", "success"),
+            btn("🟣 Violet (4.5x)", f"u:{user_id}:sgo:color:{bet}:violet:none", "primary"),
         ],
-        [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
+        [btn("❌ Close", "msg_close", "danger")],
     ])
 
 
 def post_solo_keyboard(user_id: int, replay_cb: str, bet: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton(f"🔁 Play again ({bet})", callback_data=f"u:{user_id}:{replay_cb}"),
-            InlineKeyboardButton("🎮 Games", callback_data="menu_home"),
+            btn(f"🔁 Play again ({bet})", f"u:{user_id}:{replay_cb}", "success"),
+            btn("🎮 Games", "menu_home", "primary"),
         ],
-        [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
+        [btn("❌ Close", "msg_close", "danger")],
     ])
 
 
 def round_join_keyboard(game_type: str) -> InlineKeyboardMarkup:
     if game_type == "rps":
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("🪨 Rock", callback_data="rjoin:rps:rock"),
-            InlineKeyboardButton("📄 Paper", callback_data="rjoin:rps:paper"),
-            InlineKeyboardButton("✂️ Scissors", callback_data="rjoin:rps:scissors"),
+            btn("🪨 Rock", "rjoin:rps:rock", "primary"),
+            btn("📄 Paper", "rjoin:rps:paper", "success"),
+            btn("✂️ Scissors", "rjoin:rps:scissors", "primary"),
         ]])
     if game_type == "hilo":
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("⬆️ Higher", callback_data="rjoin:hilo:high"),
-            InlineKeyboardButton("⬇️ Lower", callback_data="rjoin:hilo:low"),
+            btn("⬆️ Higher", "rjoin:hilo:high", "success"),
+            btn("⬇️ Lower", "rjoin:hilo:low", "primary"),
         ]])
     if game_type == "aviator":
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("✈️ Join Aviator Flight", callback_data="rjoin:aviator:fly")
+            btn("🚀 Join Aviator Flight", "rjoin:aviator:fly", "success")
         ]])
     if game_type == "flip":
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("👑 Heads", callback_data="rjoin:flip:heads"),
-            InlineKeyboardButton("🦅 Tails", callback_data="rjoin:flip:tails"),
+            btn("👑 Heads", "rjoin:flip:heads", "primary"),
+            btn("🦅 Tails", "rjoin:flip:tails", "success"),
         ]])
     if game_type == "dice":
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔢 Odd (1,3,5)", callback_data="rjoin:dice:odd"),
-            InlineKeyboardButton("🔢 Even (2,4,6)", callback_data="rjoin:dice:even"),
-            InlineKeyboardButton("🎯 High (4-6)", callback_data="rjoin:dice:high"),
+            btn("🔢 Odd (1,3,5)", "rjoin:dice:odd", "primary"),
+            btn("🔢 Even (2,4,6)", "rjoin:dice:even", "success"),
+            btn("🎯 High (4-6)", "rjoin:dice:high", "primary"),
         ]])
     if game_type == "slots":
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("🎰 Enter 10s Spin", callback_data="rjoin:slots:spin")
+            btn("🎰 Enter 10s Spin", "rjoin:slots:spin", "success")
         ]])
     if game_type == "guess":
-        r1 = [InlineKeyboardButton(str(n), callback_data=f"rjoin:guess:{n}") for n in range(1, 6)]
-        r2 = [InlineKeyboardButton(str(n), callback_data=f"rjoin:guess:{n}") for n in range(6, 11)]
+        r1 = [btn(str(n), f"rjoin:guess:{n}", "primary") for n in range(1, 6)]
+        r2 = [btn(str(n), f"rjoin:guess:{n}", "success") for n in range(6, 11)]
         return InlineKeyboardMarkup([r1, r2])
     if game_type == "color":
         return InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔴 Red (2x)", callback_data="rjoin:color:red"),
-            InlineKeyboardButton("🟢 Green (2x)", callback_data="rjoin:color:green"),
-            InlineKeyboardButton("🟣 Violet (4.5x)", callback_data="rjoin:color:violet"),
+            btn("🔴 Red (2x)", "rjoin:color:red", "danger"),
+            btn("🟢 Green (2x)", "rjoin:color:green", "success"),
+            btn("🟣 Violet (4.5x)", "rjoin:color:violet", "primary"),
         ]])
     return InlineKeyboardMarkup([[
-        InlineKeyboardButton("⚡ Take Shot", callback_data=f"rjoin:{game_type}:shot")
+        btn("⚡ Take Shot", f"rjoin:{game_type}:shot", "success")
     ]])
 
 
 def round_bet_keyboard(user_id: int, game_type: str, choice: str, user_coins: int) -> InlineKeyboardMarkup:
     half_amt = max(10, user_coins // 2)
     max_amt = max(10, min(user_coins, 50000))
-    r1 = [InlineKeyboardButton(str(b), callback_data=f"u:{user_id}:rbet:{game_type}:{choice}:{b}") for b in BET_OPTIONS[:3]]
-    r2 = [InlineKeyboardButton(str(b), callback_data=f"u:{user_id}:rbet:{game_type}:{choice}:{b}") for b in BET_OPTIONS[3:]]
+    r1 = [btn(str(b), f"u:{user_id}:rbet:{game_type}:{choice}:{b}", "primary") for b in BET_OPTIONS[:3]]
+    r2 = [btn(str(b), f"u:{user_id}:rbet:{game_type}:{choice}:{b}", "success") for b in BET_OPTIONS[3:]]
     r3 = [
-        InlineKeyboardButton(f"½ Half ({half_amt})", callback_data=f"u:{user_id}:rbet:{game_type}:{choice}:{half_amt}"),
-        InlineKeyboardButton(f"💥 Max ({max_amt})", callback_data=f"u:{user_id}:rbet:{game_type}:{choice}:{max_amt}"),
+        btn(f"½ Half ({half_amt})", f"u:{user_id}:rbet:{game_type}:{choice}:{half_amt}", "primary"),
+        btn(f"💥 Max ({max_amt})", f"u:{user_id}:rbet:{game_type}:{choice}:{max_amt}", "danger"),
     ]
     return InlineKeyboardMarkup([r1, r2, r3])
 
@@ -702,27 +709,29 @@ def build_mines_keyboard(game: Dict[str, Any], reveal_all: bool = False) -> Inli
         for c in range(5):
             idx = r * 5 + c
             if idx in revealed_set:
-                label = "💎"
+                row_btns.append(btn("💎", f"u:{uid}:mines_pick:{idx}", "success"))
             elif reveal_all:
-                label = "💣" if idx in mines_set else "▪"
+                if idx in mines_set:
+                    row_btns.append(btn("💣", f"u:{uid}:mines_pick:{idx}", "danger"))
+                else:
+                    row_btns.append(btn("▪", f"u:{uid}:mines_pick:{idx}", None))
             else:
-                label = "▪"
-            row_btns.append(InlineKeyboardButton(label, callback_data=f"u:{uid}:mines_pick:{idx}"))
+                row_btns.append(btn("▪", f"u:{uid}:mines_pick:{idx}", "primary"))
         rows.append(row_btns)
 
     if not reveal_all:
         mult = calc_mines_multiplier(len(revealed_set), game["mines_count"])
         cashout_amt = int(game["bet"] * mult)
         if len(revealed_set) >= 1:
-            rows.append([InlineKeyboardButton(f"💰 Cash Out (+{cashout_amt} | {mult}x)", callback_data=f"u:{uid}:mines_cashout")])
+            rows.append([btn(f"💰 Cash Out (+{cashout_amt} | {mult}x)", f"u:{uid}:mines_cashout", "success")])
         else:
-            rows.append([InlineKeyboardButton(f"💎 Pick a tile ({game['mines_count']} 💣)", callback_data=f"u:{uid}:mines_noop")])
+            rows.append([btn(f"💎 Pick a tile ({game['mines_count']} 💣)", f"u:{uid}:mines_noop", "primary")])
     else:
         rows.append([
-            InlineKeyboardButton(f"🔁 Play again ({game['bet']})", callback_data=f"u:{uid}:replay:mines:{game['bet']}:{game['mines_count']}"),
-            InlineKeyboardButton("🎮 Games", callback_data="menu_home"),
+            btn(f"🔁 Play again ({game['bet']})", f"u:{uid}:replay:mines:{game['bet']}:{game['mines_count']}", "success"),
+            btn("🎮 Games", "menu_home", "primary"),
         ])
-        rows.append([InlineKeyboardButton("❌ Close", callback_data="msg_close")])
+        rows.append([btn("❌ Close", "msg_close", "danger")])
 
     return InlineKeyboardMarkup(rows)
 
@@ -734,14 +743,15 @@ def build_ttt5_keyboard(board: List[Optional[str]], finished: bool = False) -> I
         for c in range(5):
             idx = r * 5 + c
             cell = board[idx]
-            label = cell if cell else "▪"
-            cb = "ttt5_noop" if finished else f"ttt5_cell:{idx}"
-            row_btns.append(InlineKeyboardButton(label, callback_data=cb))
+            if cell:
+                row_btns.append(btn(cell, "ttt5_noop" if finished else f"ttt5_cell:{idx}", "success"))
+            else:
+                row_btns.append(btn("▪", "ttt5_noop" if finished else f"ttt5_cell:{idx}", "primary" if not finished else None))
         rows.append(row_btns)
     if finished:
         rows.append([
-            InlineKeyboardButton("🔁 New 5x5 TicTacToe", callback_data="ttt5_start"),
-            InlineKeyboardButton("🎮 Games", callback_data="menu_home"),
+            btn("🔁 New 5x5 TicTacToe", "ttt5_start", "success"),
+            btn("🎮 Games", "menu_home", "primary"),
         ])
     return InlineKeyboardMarkup(rows)
 
@@ -759,7 +769,7 @@ async def run_solo_aviator(
         return
     key = (chat_id, user_id)
     if key in ACTIVE_AVIATOR_SOLO:
-        await context.bot.send_message(chat_id, "✈️ Tumhari ek Aviator flight pehle se chal rahi hai!")
+        await context.bot.send_message(chat_id, "🚀 Tumhari ek Aviator flight pehle se chal rahi hai!")
         return
 
     db.ensure_user(user_id, name, username)
@@ -784,13 +794,13 @@ async def run_solo_aviator(
     msg = await context.bot.send_message(
         chat_id=chat_id,
         text=(
-            f"✈️ <b>Aviator</b> · bet {bet}\n"
+            f"🚀 <b>Aviator</b> · bet {bet}\n"
             f"🛫 Altitude: <b>1.0x</b> (Max 7.0x)\n"
             f"💰 Potential Win: <code>{bet}</code> coins"
         ),
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton(f"💰 Cash Out ({bet})", callback_data=f"u:{user_id}:av_cashout")
+            btn(f"💰 Cash Out ({bet})", f"u:{user_id}:av_cashout", "success")
         ]]),
     )
 
@@ -804,16 +814,16 @@ async def run_solo_aviator(
         if cur >= crash_pt:
             break
         pot_win = int(bet * cur)
-        bar = "🛫" + "━" * int((cur - 1.0) * 2.5) + "✈️"
+        bar = "🛫" + "━" * int((cur - 1.0) * 2.5) + "🚀"
         try:
             await msg.edit_text(
-                f"✈️ <b>Aviator</b> · bet {bet}\n"
+                f"🚀 <b>Aviator</b> · bet {bet}\n"
                 f"{bar}\n"
                 f"📈 Multiplier: <b>{cur:.1f}x</b>\n"
                 f"💰 Potential Win: <code>{pot_win}</code> coins",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton(f"💰 Cash Out (+{pot_win} | {cur:.1f}x)", callback_data=f"u:{user_id}:av_cashout")
+                    btn(f"💰 Cash Out (+{pot_win} | {cur:.1f}x)", f"u:{user_id}:av_cashout", "success")
                 ]]),
             )
         except TelegramError:
@@ -827,7 +837,7 @@ async def run_solo_aviator(
         db.record_outcome(user_id, True, payout=payout, chat_id=chat_id, name=name)
         final_bal = (db.get_user(user_id) or {}).get("coins", bal_after_bet + payout)
         await msg.edit_text(
-            f"✈️ <b>Aviator</b> · bet {bet}\n"
+            f"🚀 <b>Aviator</b> · bet {bet}\n"
             f"✅ <b>Cashed Out at {c_mult:.1f}x!</b> (Flew away at {crash_pt:.1f}x)\n"
             f"🎉 <b>You won +{payout} coins!</b>\n"
             f"🪙 <b>Balance:</b> <code>{final_bal}</code>",
@@ -838,7 +848,7 @@ async def run_solo_aviator(
         flight["crashed"] = True
         db.record_outcome(user_id, False, chat_id=chat_id, name=name)
         await msg.edit_text(
-            f"✈️ <b>Aviator</b> · bet {bet}\n"
+            f"🚀 <b>Aviator</b> · bet {bet}\n"
             f"💥 <b>Flew Away at {crash_pt:.1f}x!</b>\n"
             f"❌ <b>You lost {bet} coins.</b>\n"
             f"🪙 <b>Balance:</b> <code>{bal_after_bet}</code>",
@@ -852,7 +862,7 @@ async def run_group_aviator_flight(
 ) -> None:
     crash_pt = generate_aviator_crash()
     flight_state: Dict[str, Any] = {
-        "entries": entries,  # uid -> {"name": str, "bet": int, "cashed_mult": Optional[float]}
+        "entries": entries,
         "cur_mult": 1.0,
         "active": True,
     }
@@ -864,20 +874,19 @@ async def run_group_aviator_flight(
     msg = await context.bot.send_message(
         chat_id=chat_id,
         text=(
-            f"✈️ <b>Aviator Live Flight!</b> (Max 7.0x)\n"
+            f"🚀 <b>Aviator Live Flight!</b> (Max 7.0x)\n"
             f"🛫 Altitude: <b>1.0x</b>\n"
             f"👇 Apne luck ke hisaab se kabhi bhi <b>Cash Out</b> dabao!"
         ),
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("💰 Cash Out Now (1.0x)", callback_data="gav_cashout")
+            btn("💰 Cash Out Now (1.0x)", "gav_cashout", "success")
         ]]),
     )
 
     cur = 1.0
     while cur < crash_pt:
         await asyncio.sleep(1.15)
-        # Stop early if all players already cashed out
         if all(p.get("cashed_mult") is not None for p in entries.values()):
             break
         cur = round(min(7.0, cur + 0.2), 1)
@@ -891,15 +900,15 @@ async def run_group_aviator_flight(
             if p.get("cashed_mult") is not None
         ]
         cashed_line = ("\n" + " | ".join(cashed_names)) if cashed_names else ""
-        bar = "🛫" + "━" * int((cur - 1.0) * 2.5) + "✈️"
+        bar = "🛫" + "━" * int((cur - 1.0) * 2.5) + "🚀"
         try:
             await msg.edit_text(
-                f"✈️ <b>Aviator Live Flight!</b>\n"
+                f"🚀 <b>Aviator Live Flight!</b>\n"
                 f"{bar}\n"
                 f"📈 Current Multiplier: <b>{cur:.1f}x</b>{cashed_line}",
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton(f"💰 Cash Out Now ({cur:.1f}x)", callback_data="gav_cashout")
+                    btn(f"💰 Cash Out Now ({cur:.1f}x)", "gav_cashout", "success")
                 ]]),
             )
         except TelegramError:
@@ -936,10 +945,10 @@ async def run_group_aviator_flight(
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("🔁 New Aviator Round", callback_data="round_start:aviator"),
-                    InlineKeyboardButton("🎮 Games", callback_data="menu_home"),
+                    btn("🔁 New Aviator Round", "round_start:aviator", "success"),
+                    btn("🎮 Games", "menu_home", "primary"),
                 ],
-                [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
+                [btn("❌ Close", "msg_close", "danger")],
             ]),
         )
     except TelegramError:
@@ -971,8 +980,8 @@ async def run_ttt5_match(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> No
         ),
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🎟 Join (100 coins)", callback_data="ttt5_join:100"),
-            InlineKeyboardButton("🎟 Join (250 coins)", callback_data="ttt5_join:250"),
+            btn("🎟 Join (100 coins)", "ttt5_join:100", "primary"),
+            btn("🎟 Join (250 coins)", "ttt5_join:250", "success"),
         ]]),
     )
     match["msg_id"] = join_msg.message_id
@@ -992,8 +1001,8 @@ async def run_ttt5_match(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> No
                 ),
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🎟 Join (100 coins)", callback_data="ttt5_join:100"),
-                    InlineKeyboardButton("🎟 Join (250 coins)", callback_data="ttt5_join:250"),
+                    btn("🎟 Join (100 coins)", "ttt5_join:100", "primary"),
+                    btn("🎟 Join (250 coins)", "ttt5_join:250", "success"),
                 ]]),
             )
         except TelegramError:
@@ -1292,7 +1301,7 @@ async def run_ten_sec_round(context: ContextTypes.DEFAULT_TYPE, chat_id: int, ga
     title_map = {
         "rps": "✊ <b>10s R-P-S Round</b>",
         "hilo": "🔼 <b>10s Hi-Lo Round</b>",
-        "aviator": "✈️ <b>10s Aviator Entry</b>",
+        "aviator": "🚀 <b>10s Aviator Entry</b>",
         "flip": "🪙 <b>10s Coin Flip Round</b>",
         "dice": "🎲 <b>10s Dice Round</b>",
         "slots": "🎰 <b>10s Jackpot Spin</b>",
@@ -1500,10 +1509,10 @@ async def run_ten_sec_round(context: ContextTypes.DEFAULT_TYPE, chat_id: int, ga
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("🔁 New 10s Round", callback_data=f"round_start:{game_type}"),
-                InlineKeyboardButton("🎮 Games", callback_data="menu_home"),
+                btn("🔁 New 10s Round", f"round_start:{game_type}", "success"),
+                btn("🎮 Games", "menu_home", "primary"),
             ],
-            [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
+            [btn("❌ Close", "msg_close", "danger")],
         ]),
     )
     asyncio.create_task(
