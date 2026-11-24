@@ -94,12 +94,23 @@ def run_health_server() -> None:
 
 
 # ==============================================================================
-# BUTTON STYLING & KEYBOARD HELPERS
+# STYLISH COLOR GRADING & KEYBOARD HELPERS
 # ==============================================================================
-def btn(text: str, callback_data: str, style: Optional[str] = None) -> InlineKeyboardButton:
+def stylish_btn(
+    text: str,
+    callback_data: str,
+    tone: str = "primary",  # "primary" (blue) | "success" (green) | "danger" (red) | "muted" (none)
+) -> InlineKeyboardButton:
+    style_map = {
+        "primary": "primary",
+        "success": "success",
+        "danger": "danger",
+        "muted": None,
+    }
+    chosen_style = style_map.get(tone, "primary")
     kwargs: Dict[str, Any] = {}
-    if style in ("primary", "success", "danger"):
-        kwargs["api_kwargs"] = {"style": style}
+    if chosen_style:
+        kwargs["api_kwargs"] = {"style": chosen_style}
     return InlineKeyboardButton(text=text, callback_data=callback_data, **kwargs)
 
 
@@ -107,33 +118,33 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                btn("🚀 Aviator", "menu_aviator", "primary"),
-                btn("💣 Mines", "menu_mines", "danger"),
-                btn("❎ 5x5 TTT", "start_ttt5", "primary"),
+                stylish_btn("🚀 Aviator", "menu_aviator", "primary"),
+                stylish_btn("💣 Mines", "menu_mines", "danger"),
+                stylish_btn("❎ 5x5 TTT", "start_ttt5", "primary"),
             ],
             [
-                btn("✊ R-P-S", "pick_game:rps", "primary"),
-                btn("📈 Hi-Lo", "pick_game:hilo", "primary"),
-                btn("🪙 Flip", "pick_game:flip", "primary"),
+                stylish_btn("✊ R-P-S", "pick_game:rps", "primary"),
+                stylish_btn("📈 Hi-Lo", "pick_game:hilo", "primary"),
+                stylish_btn("🪙 Flip", "pick_game:flip", "primary"),
             ],
             [
-                btn("🎲 Dice", "pick_game:dice", "primary"),
-                btn("🎰 Slots", "pick_game:slots", "primary"),
-                btn("🔢 Guess", "pick_game:guess", "primary"),
+                stylish_btn("🎲 Dice", "pick_game:dice", "primary"),
+                stylish_btn("🎰 Slots", "pick_game:slots", "primary"),
+                stylish_btn("🔢 Guess", "pick_game:guess", "primary"),
             ],
             [
-                btn("🎡 Wheel", "pick_game:wheel", "primary"),
-                btn("🏀 Sports", "pick_game:sports", "primary"),
-                btn("🪙 Refill", "do_refill", "success"),
+                stylish_btn("🎡 Wheel", "pick_game:wheel", "primary"),
+                stylish_btn("🏀 Sports", "pick_game:sports", "primary"),
+                stylish_btn("🪙 Refill", "do_refill", "success"),
             ],
             [
-                btn("🎁 Daily", "do_daily", "success"),
-                btn("💰 Balance", "menu_bal", "success"),
-                btn("🏆 Top", "menu_top", "primary"),
+                stylish_btn("🎁 Daily", "do_daily", "success"),
+                stylish_btn("💰 Balance", "menu_bal", "success"),
+                stylish_btn("🏆 Top", "menu_top", "primary"),
             ],
             [
-                btn("👥 Group Top", "menu_gtop", "primary"),
-                btn("❓ Help", "menu_help", None),
+                stylish_btn("👥 Group Top", "menu_gtop", "primary"),
+                stylish_btn("❓ Help", "menu_help", "muted"),
             ],
         ]
     )
@@ -143,13 +154,13 @@ def mines_bombs_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [
-                btn("2 💣", "mines_bombs:2", "danger"),
-                btn("4 💣", "mines_bombs:4", "danger"),
-                btn("5 💣", "mines_bombs:5", "danger"),
-                btn("7 💣", "mines_bombs:7", "danger"),
-                btn("9 💣", "mines_bombs:9", "danger"),
+                stylish_btn("2 💣", "mines_bombs:2", "danger"),
+                stylish_btn("4 💣", "mines_bombs:4", "danger"),
+                stylish_btn("5 💣", "mines_bombs:5", "danger"),
+                stylish_btn("7 💣", "mines_bombs:7", "danger"),
+                stylish_btn("9 💣", "mines_bombs:9", "danger"),
             ],
-            [btn("⬅️ Main Menu", "back_menu", None)],
+            [stylish_btn("⬅️ Main Menu", "back_menu", "muted")],
         ]
     )
 
@@ -163,11 +174,11 @@ def bet_amounts_keyboard(
     max_amt = max(MIN_BET, min(user_coins, MAX_BET))
     presets = [10, 50, 100, 250, 500, 1000]
     rows: List[List[InlineKeyboardButton]] = [
-        [btn(f"{amt}", f"{prefix}:{amt}", "success") for amt in presets[:3]],
-        [btn(f"{amt}", f"{prefix}:{amt}", "success") for amt in presets[3:]],
+        [stylish_btn(f"{amt}", f"{prefix}:{amt}", "success") for amt in presets[:3]],
+        [stylish_btn(f"{amt}", f"{prefix}:{amt}", "success") for amt in presets[3:]],
         [
-            btn(f"½ ({half_amt})", f"{prefix}:{half_amt}", "primary"),
-            btn(f"Max ({max_amt})", f"{prefix}:{max_amt}", "danger"),
+            stylish_btn(f"½ ({half_amt})", f"{prefix}:{half_amt}", "primary"),
+            stylish_btn(f"Max ({max_amt})", f"{prefix}:{max_amt}", "danger"),
         ],
     ]
     if extra_rows:
@@ -180,9 +191,9 @@ def game_choice_keyboard(game_key: str, round_id: str) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             [
                 [
-                    btn("✊ Rock", f"rchoice:{round_id}:rock", "primary"),
-                    btn("✋ Paper", f"rchoice:{round_id}:paper", "primary"),
-                    btn("✌️ Scissor", f"rchoice:{round_id}:scissor", "primary"),
+                    stylish_btn("✊ Rock", f"rchoice:{round_id}:rock", "primary"),
+                    stylish_btn("✋ Paper", f"rchoice:{round_id}:paper", "primary"),
+                    stylish_btn("✌️ Scissor", f"rchoice:{round_id}:scissor", "primary"),
                 ]
             ]
         )
@@ -190,8 +201,8 @@ def game_choice_keyboard(game_key: str, round_id: str) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             [
                 [
-                    btn("⬆️ High (4–6)", f"rchoice:{round_id}:high", "success"),
-                    btn("⬇️ Low (1–3)", f"rchoice:{round_id}:low", "danger"),
+                    stylish_btn("⬆️ High (4–6)", f"rchoice:{round_id}:high", "success"),
+                    stylish_btn("⬇️ Low (1–3)", f"rchoice:{round_id}:low", "danger"),
                 ]
             ]
         )
@@ -199,54 +210,54 @@ def game_choice_keyboard(game_key: str, round_id: str) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             [
                 [
-                    btn("🟡 Heads", f"rchoice:{round_id}:heads", "primary"),
-                    btn("⚪ Tails", f"rchoice:{round_id}:tails", "primary"),
+                    stylish_btn("🟡 Heads", f"rchoice:{round_id}:heads", "primary"),
+                    stylish_btn("⚪ Tails", f"rchoice:{round_id}:tails", "primary"),
                 ]
             ]
         )
     if game_key == "dice":
         return InlineKeyboardMarkup(
             [
-                [btn(f"🎲 {n}", f"rchoice:{round_id}:{n}", "primary") for n in (1, 2, 3)],
-                [btn(f"🎲 {n}", f"rchoice:{round_id}:{n}", "primary") for n in (4, 5, 6)],
+                [stylish_btn(f"🎲 {n}", f"rchoice:{round_id}:{n}", "primary") for n in (1, 2, 3)],
+                [stylish_btn(f"🎲 {n}", f"rchoice:{round_id}:{n}", "primary") for n in (4, 5, 6)],
             ]
         )
     if game_key == "slots":
         return InlineKeyboardMarkup(
             [
                 [
-                    btn("🍒 Cherry", f"rchoice:{round_id}:cherry", "primary"),
-                    btn("💎 Gem", f"rchoice:{round_id}:gem", "success"),
-                    btn("7️⃣ Jackpot", f"rchoice:{round_id}:seven", "danger"),
+                    stylish_btn("🍒 Cherry", f"rchoice:{round_id}:cherry", "primary"),
+                    stylish_btn("💎 Gem", f"rchoice:{round_id}:gem", "success"),
+                    stylish_btn("7️⃣ Jackpot", f"rchoice:{round_id}:seven", "danger"),
                 ]
             ]
         )
     if game_key == "guess":
         return InlineKeyboardMarkup(
             [
-                [btn(f"{n}", f"rchoice:{round_id}:{n}", "primary") for n in (1, 2, 3, 4, 5)],
-                [btn(f"{n}", f"rchoice:{round_id}:{n}", "primary") for n in (6, 7, 8, 9, 10)],
+                [stylish_btn(f"{n}", f"rchoice:{round_id}:{n}", "primary") for n in (1, 2, 3, 4, 5)],
+                [stylish_btn(f"{n}", f"rchoice:{round_id}:{n}", "primary") for n in (6, 7, 8, 9, 10)],
             ]
         )
     if game_key == "wheel":
         return InlineKeyboardMarkup(
             [
                 [
-                    btn("🟢 2x", f"rchoice:{round_id}:2x", "success"),
-                    btn("🔵 3x", f"rchoice:{round_id}:3x", "primary"),
-                    btn("🔴 5x", f"rchoice:{round_id}:5x", "danger"),
+                    stylish_btn("🟢 2x", f"rchoice:{round_id}:2x", "success"),
+                    stylish_btn("🔵 3x", f"rchoice:{round_id}:3x", "primary"),
+                    stylish_btn("🔴 5x", f"rchoice:{round_id}:5x", "danger"),
                 ]
             ]
         )
     return InlineKeyboardMarkup(
         [
             [
-                btn("🏀 Hoops", f"rchoice:{round_id}:hoops", "primary"),
-                btn("⚽ Goal", f"rchoice:{round_id}:goal", "success"),
+                stylish_btn("🏀 Hoops", f"rchoice:{round_id}:hoops", "primary"),
+                stylish_btn("⚽ Goal", f"rchoice:{round_id}:goal", "success"),
             ],
             [
-                btn("🎯 Bullseye", f"rchoice:{round_id}:target", "danger"),
-                btn("🎳 Strike", f"rchoice:{round_id}:strike", "primary"),
+                stylish_btn("🎯 Bullseye", f"rchoice:{round_id}:target", "danger"),
+                stylish_btn("🎳 Strike", f"rchoice:{round_id}:strike", "primary"),
             ],
         ]
     )
@@ -646,15 +657,26 @@ def schedule_delete_messages(
 
 def help_text() -> str:
     return (
-        "📖 <b>Game Guide (Simple &amp; Clear)</b>\n\n"
-        "<b>🎮 Modes &amp; Players:</b>\n"
-        "• <b>Aviator</b> (Single / Group Live Flight): <code>1.0x</code> se <code>0.2x</code> steps mein <code>7.0x</code> tak—crash se pehle <b>Cash Out</b> dabao. Group mein <code>20s</code> entry ke baad cash-out feed neeche dikhti hai.\n"
-        "• <b>Mines</b> (Single / Group Parallel 2–4+): <code>2, 4, 5, 7, 9</code> bombs chuno, safe 💎 tiles kholo aur cash out karo. Group mein har player ka board alag hota hai.\n"
-        "• <b>5x5 Tic Tac Toe</b> (Group Multiplayer 2–6 / 3–4+): <code>12s</code> join window, alag-alag marks, <code>20s</code> turn—zyada lines banane wala jeetega.\n"
-        "• <b>R-P-S, Hi-Lo, Flip, Dice, Slots, Guess, Wheel &amp; Sports</b> (Solo DM / Group <code>20s</code> Round): Group mein <code>20s</code> round + sabki live bet lock list + end mein result.\n\n"
-        "<b>🪙 Coins &amp; Commands:</b>\n"
-        f"• <code>/daily</code> — Har <code>24h</code> mein <b>{DAILY_REWARD}</b> coins.\n"
-        f"• <code>/refill</code> (ya <b>🪙 Refill</b>) — Har <code>30m</code> mein <b>{REFILL_AMOUNT}</b> coins.\n"
+        "📖 <b>Game Guide (Simple &amp; Clear)</b>
+
+"
+        "<b>🎮 Modes &amp; Players:</b>
+"
+        "• <b>Aviator</b> (Single / Group Live Flight): <code>1.0x</code> se <code>0.2x</code> steps mein <code>7.0x</code> tak—crash se pehle <b>Cash Out</b> dabao. Group mein <code>20s</code> entry ke baad cash-out feed neeche dikhti hai.
+"
+        "• <b>Mines</b> (Single / Group Parallel 2–4+): <code>2, 4, 5, 7, 9</code> bombs chuno, safe 💎 tiles kholo aur cash out karo. Group mein har player ka board alag hota hai.
+"
+        "• <b>5x5 Tic Tac Toe</b> (Group Multiplayer 2–6 / 3–4+): <code>12s</code> join window, alag-alag marks, <code>20s</code> turn—zyada lines banane wala jeetega.
+"
+        "• <b>R-P-S, Hi-Lo, Flip, Dice, Slots, Guess, Wheel &amp; Sports</b> (Solo DM / Group <code>20s</code> Round): Group mein <code>20s</code> round + sabki live bet lock list + end mein result.
+
+"
+        "<b>🪙 Coins &amp; Commands:</b>
+"
+        f"• <code>/daily</code> — Har <code>24h</code> mein <b>{DAILY_REWARD}</b> coins.
+"
+        f"• <code>/refill</code> (ya <b>🪙 Refill</b>) — Har <code>30m</code> mein <b>{REFILL_AMOUNT}</b> coins.
+"
         "• <code>/bal</code>, <code>/give &lt;amt&gt;</code> (reply), <code>/gtop</code>, <code>/top</code>, <code>/ref</code>, <code>/mines</code>."
     )
 
@@ -675,7 +697,8 @@ async def claim_daily_logic(user_id: int, first_name: str, username: Optional[st
     new_bal = db.adjust_coins(user_id, DAILY_REWARD)
     bal_val = new_bal if new_bal is not None else int(user.get("coins", 0)) + DAILY_REWARD
     return True, (
-        f"🎁 <b>Daily Claimed!</b> +{DAILY_REWARD} coins mile.\n"
+        f"🎁 <b>Daily Claimed!</b> +{DAILY_REWARD} coins mile.
+"
         f"🪙 <b>Balance:</b> <code>{bal_val}</code>"
     )
 
@@ -693,7 +716,8 @@ async def claim_refill_logic(user_id: int, first_name: str, username: Optional[s
     new_bal = db.adjust_coins(user_id, REFILL_AMOUNT)
     bal_val = new_bal if new_bal is not None else int(user.get("coins", 0)) + REFILL_AMOUNT
     return True, (
-        f"🪙 <b>Refill Done!</b> +{REFILL_AMOUNT} coins mile.\n"
+        f"🪙 <b>Refill Done!</b> +{REFILL_AMOUNT} coins mile.
+"
         f"🪙 <b>Balance:</b> <code>{bal_val}</code>"
     )
 
@@ -707,10 +731,14 @@ def format_balance_card(user_id: int, name: str, username: Optional[str]) -> str
     best_streak = int(u.get("best_streak", 0))
     big_win = int(u.get("biggest_win", 0))
     return (
-        f"👤 <b>{u.get('first_name', name)}</b>\n"
-        f"🪙 <b>Balance:</b> <code>{coins}</code> coins\n"
-        f"🎮 <b>Played / Won:</b> <code>{played}</code> / <code>{won}</code>\n"
-        f"🔥 <b>Streak (Best):</b> <code>{streak}</code> (<code>{best_streak}</code>)\n"
+        f"👤 <b>{u.get('first_name', name)}</b>
+"
+        f"🪙 <b>Balance:</b> <code>{coins}</code> coins
+"
+        f"🎮 <b>Played / Won:</b> <code>{played}</code> / <code>{won}</code>
+"
+        f"🔥 <b>Streak (Best):</b> <code>{streak}</code> (<code>{best_streak}</code>)
+"
         f"💎 <b>Biggest Win:</b> <code>{big_win}</code>"
     )
 
@@ -740,23 +768,23 @@ def build_mines_keyboard(game: Dict[str, Any], reveal_all: bool = False, finishe
         for c in range(5):
             idx = r * 5 + c
             if idx in rev_set:
-                label, style = "💎", "success"
+                label, tone = "💎", "success"
             elif reveal_all and idx in mines_set:
-                label, style = "💣", "danger"
+                label, tone = "💣", "danger"
             elif reveal_all:
-                label, style = "·", None
+                label, tone = "·", "muted"
             else:
-                label, style = "⬜", None
-            row_btns.append(btn(label, f"mclick:{idx}", style))
+                label, tone = "⬜", "muted"
+            row_btns.append(stylish_btn(label, f"mclick:{idx}", tone))
         rows.append(row_btns)
 
     if not finished:
         mult = mines_multiplier(len(rev_set), game["mines_count"])
         payout = int(game["bet"] * mult)
         if len(rev_set) > 0:
-            rows.append([btn(f"💰 Cash Out ({payout} | {mult}x)", "mcashout", "success")])
+            rows.append([stylish_btn(f"💰 Cash Out ({payout} | {mult}x)", "mcashout", "success")])
         else:
-            rows.append([btn("💎 Safe Tile Chuno", "mnop", None)])
+            rows.append([stylish_btn("💎 Safe Tile Chuno", "mnop", "muted")])
 
     return InlineKeyboardMarkup(rows)
 
@@ -802,8 +830,10 @@ async def start_mines_game(
     }
     ACTIVE_MINES[game_key] = game
     await send_fn(
-        f"💣 <b>Mines</b> · {bombs} mines · bet <code>{bet}</code> · <b>{name}</b>\n"
-        f"Safe 💎 tiles kholo aur cash out karo.\n"
+        f"💣 <b>Mines</b> · {bombs} mines · bet <code>{bet}</code> · <b>{name}</b>
+"
+        f"Safe 💎 tiles kholo aur cash out karo.
+"
         f"🪙 <b>Balance:</b> <code>{new_bal}</code>",
         parse_mode=ParseMode.HTML,
         reply_markup=build_mines_keyboard(game, reveal_all=False, finished=False),
@@ -822,12 +852,12 @@ def build_ttt5_keyboard(game: Dict[str, Any], finished: bool = False) -> InlineK
             idx = r * 5 + c
             cell = board[idx]
             label = "⬜" if cell is None else cell
-            style = None if cell is None else "primary"
-            row_btns.append(btn(label, f"ttt5_move:{idx}", style))
+            tone = "muted" if cell is None else "primary"
+            row_btns.append(stylish_btn(label, f"ttt5_move:{idx}", tone))
         rows.append(row_btns)
 
     if not finished and game["status"] == "joining":
-        rows.append([btn("➕ Join Match", "ttt5_join", "success")])
+        rows.append([stylish_btn("➕ Join Match", "ttt5_join", "success")])
 
     return InlineKeyboardMarkup(rows)
 
@@ -895,7 +925,8 @@ async def finish_ttt5_game(app: Application, chat_id: int, reason: str = "Board 
 
     msg = await app.bot.send_message(
         chat_id=chat_id,
-        text="\n".join(lines_out),
+        text="
+".join(lines_out),
         parse_mode=ParseMode.HTML,
         reply_markup=build_ttt5_keyboard(game, finished=True),
     )
@@ -932,8 +963,10 @@ async def ttt5_turn_watcher(app: Application, chat_id: int, expected_turn_num: i
             chat_id=chat_id,
             message_id=game["message_id"],
             text=(
-                f"❎ <b>5x5 Tic Tac Toe</b> (Auto-move by {cur_player['name']})\n"
-                f"{format_ttt5_roster(game)}\n"
+                f"❎ <b>5x5 Tic Tac Toe</b> (Auto-move by {cur_player['name']})
+"
+                f"{format_ttt5_roster(game)}
+"
                 f"🎯 Turn: {next_p['mark']} <b>{next_p['name']}</b> ({TTT_TURN_SECONDS}s)"
             ),
             parse_mode=ParseMode.HTML,
@@ -977,8 +1010,10 @@ async def ttt5_join_countdown(app: Application, chat_id: int, message_id: int) -
             chat_id=chat_id,
             message_id=message_id,
             text=(
-                f"❎ <b>5x5 Tic Tac Toe Started!</b>\n"
-                f"{format_ttt5_roster(game)}\n"
+                f"❎ <b>5x5 Tic Tac Toe Started!</b>
+"
+                f"{format_ttt5_roster(game)}
+"
                 f"🎯 Turn: {first_p['mark']} <b>{first_p['name']}</b> ({TTT_TURN_SECONDS}s)"
             ),
             parse_mode=ParseMode.HTML,
@@ -1081,8 +1116,10 @@ async def resolve_solo_game(
         final_bal = new_bal
 
     await send_fn(
-        f"{outcome_text}\n"
-        f"💰 <b>Bet:</b> <code>{bet}</code> · <b>Payout:</b> <code>{payout}</code>\n"
+        f"{outcome_text}
+"
+        f"💰 <b>Bet:</b> <code>{bet}</code> · <b>Payout:</b> <code>{payout}</code>
+"
         f"🪙 <b>Balance:</b> <code>{final_bal}</code>",
         parse_mode=ParseMode.HTML,
     )
@@ -1111,7 +1148,8 @@ async def resolve_solo_aviator(
         payout = int(round(bet * target_m))
         final_b = db.adjust_coins(user_id, payout, chat_id=chat_id, name=name, won_delta=1, payout_amount=payout)
         await send_fn(
-            f"🚀 Cash Out at <b>{target_m:.1f}x</b> (Crash: {crash_m:.1f}x)\n"
+            f"🚀 Cash Out at <b>{target_m:.1f}x</b> (Crash: {crash_m:.1f}x)
+"
             f"💰 Payout: <code>{payout}</code> · Bal: <code>{final_b}</code>",
             parse_mode=ParseMode.HTML,
         )
@@ -1132,7 +1170,8 @@ def format_locked_bets_text(round_obj: Dict[str, Any]) -> str:
     lines = ["🔒 <b>Locked Bets:</b>"]
     for item in bets.values():
         lines.append(f"• ✅ <b>{item['name']}</b> ne <code>{item['bet']}</code> coins par lock kar diya ({item['choice']})")
-    return "\n".join(lines)
+    return "
+".join(lines)
 
 
 def format_aviator_cashout_feed(flight_obj: Dict[str, Any]) -> str:
@@ -1144,7 +1183,8 @@ def format_aviator_cashout_feed(flight_obj: Dict[str, Any]) -> str:
         lines.append(
             f"• ✅ <b>{c['name']}</b> ne <code>{c['mult']:.1f}x</code> par Cash Out kar liya! (<code>+{c['payout']}</code> coins)"
         )
-    return "\n".join(lines)
+    return "
+".join(lines)
 
 
 async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Dict[str, Any]) -> None:
@@ -1185,15 +1225,18 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
     while cur_mult <= crash_mult + 1e-9:
         flight_state["mult"] = round(cur_mult, 1)
         cashout_btn = InlineKeyboardMarkup(
-            [[btn(f"💸 Cash Out ({cur_mult:.1f}x)", f"av_cash:{round_obj['id']}", "success")]]
+            [[stylish_btn(f"💸 Cash Out ({cur_mult:.1f}x)", f"av_cash:{round_obj['id']}", "success")]]
         )
         try:
             await app.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=msg_id,
                 text=(
-                    f"🚀 <b>Aviator Live:</b> <code>{cur_mult:.1f}x</code>\n"
-                    f"⚡ Crash hone se pehle Cash Out dabao!\n\n"
+                    f"🚀 <b>Aviator Live:</b> <code>{cur_mult:.1f}x</code>
+"
+                    f"⚡ Crash hone se pehle Cash Out dabao!
+
+"
                     f"{format_aviator_cashout_feed(flight_state)}"
                 ),
                 parse_mode=ParseMode.HTML,
@@ -1233,7 +1276,8 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
         await app.bot.edit_message_text(
             chat_id=chat_id,
             message_id=msg_id,
-            text="\n".join(summary_lines),
+            text="
+".join(summary_lines),
             parse_mode=ParseMode.HTML,
         )
         schedule_delete_messages(app.bot, chat_id, [msg_id], AUTO_DELETE_RESULT_SEC)
@@ -1354,7 +1398,8 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
         await app.bot.edit_message_text(
             chat_id=chat_id,
             message_id=msg_id,
-            text="\n".join(result_lines),
+            text="
+".join(result_lines),
             parse_mode=ParseMode.HTML,
         )
         schedule_delete_messages(app.bot, chat_id, [msg_id], AUTO_DELETE_RESULT_SEC)
@@ -1400,16 +1445,22 @@ async def start_group_round(
     if game_key == "aviator":
         markup = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
         msg = await send_fn(
-            f"🚀 <b>Aviator Group Round</b> ({ROUND_SECONDS}s entry)\n"
-            f"Started by <b>{starter_name}</b> — apni bet lock karo!\n\n"
+            f"🚀 <b>Aviator Group Round</b> ({ROUND_SECONDS}s entry)
+"
+            f"Started by <b>{starter_name}</b> — apni bet lock karo!
+
+"
             f"{format_locked_bets_text(round_obj)}",
             parse_mode=ParseMode.HTML,
             reply_markup=markup,
         )
     else:
         msg = await send_fn(
-            f"🎮 <b>{game_key.upper()} Round</b> ({ROUND_SECONDS}s)\n"
-            f"Started by <b>{starter_name}</b> — pehle apni choice chuno:\n\n"
+            f"🎮 <b>{game_key.upper()} Round</b> ({ROUND_SECONDS}s)
+"
+            f"Started by <b>{starter_name}</b> — pehle apni choice chuno:
+
+"
             f"{format_locked_bets_text(round_obj)}",
             parse_mode=ParseMode.HTML,
             reply_markup=game_choice_keyboard(game_key, round_id),
@@ -1479,7 +1530,8 @@ async def cmd_ref(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uname = BOT_USERNAME or (context.bot.username or "your_bot")
     link = f"https://t.me/{uname}?start={u.id}"
     await update.message.reply_text(
-        f"🔗 <b>Your Invite Link:</b>\n<code>{link}</code>",
+        f"🔗 <b>Your Invite Link:</b>
+<code>{link}</code>",
         parse_mode=ParseMode.HTML,
     )
 
@@ -1516,7 +1568,8 @@ async def cmd_give(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     db.adjust_coins(target.id, amt)
     await update.message.reply_text(
-        f"💸 <b>{sender.first_name}</b> ne <b>{target.first_name}</b> ko <code>{amt}</code> coins bheje!\n"
+        f"💸 <b>{sender.first_name}</b> ne <b>{target.first_name}</b> ko <code>{amt}</code> coins bheje!
+"
         f"🪙 Tumhara balance: <code>{new_sender_bal}</code>",
         parse_mode=ParseMode.HTML,
     )
@@ -1534,7 +1587,8 @@ async def cmd_top(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     for idx, r in enumerate(rows):
         prefix = medals.get(idx, f"{idx + 1}.")
         lines.append(f"{prefix} <b>{r.get('first_name', 'Player')}</b> — <code>{int(r.get('coins', 0))}</code> coins")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+    await update.message.reply_text("
+".join(lines), parse_mode=ParseMode.HTML)
 
 
 async def cmd_gtop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1553,7 +1607,8 @@ async def cmd_gtop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     for idx, r in enumerate(rows):
         prefix = medals.get(idx, f"{idx + 1}.")
         lines.append(f"{prefix} <b>{r.get('name', 'Player')}</b> — <code>{int(r.get('net_coins', 0))}</code> net")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+    await update.message.reply_text("
+".join(lines), parse_mode=ParseMode.HTML)
 
 
 async def cmd_mines(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1569,7 +1624,7 @@ async def cmd_mines(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         reply_markup=bet_amounts_keyboard(
             int(user_doc.get("coins", 0)),
             "sbet:mines:4",
-            extra_rows=[[btn(f"{b} 💣", f"mines_bombs:{b}", "danger") for b in MINES_BOMB_CHOICES]],
+            extra_rows=[[stylish_btn(f"{b} 💣", f"mines_bombs:{b}", "danger") for b in MINES_BOMB_CHOICES]],
         ),
     )
 
@@ -1654,9 +1709,12 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     s = db.stats_summary()
     await update.message.reply_text(
-        f"📊 <b>Bot Stats</b>\n"
-        f"• Users: <code>{s['users']}</code>\n"
-        f"• Chats: <code>{s['chats']}</code>\n"
+        f"📊 <b>Bot Stats</b>
+"
+        f"• Users: <code>{s['users']}</code>
+"
+        f"• Chats: <code>{s['chats']}</code>
+"
         f"• Total Coins: <code>{s['coins']}</code>",
         parse_mode=ParseMode.HTML,
     )
@@ -1705,9 +1763,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if chat:
         db.record_chat(chat.id, chat.title or u.first_name, chat.type)
 
-    async def reply_cb(text: str, reply_markup: Optional[InlineKeyboardMarkup] = None) -> Any:
+    async def reply_cb(
+        text: str,
+        reply_markup: Optional[InlineKeyboardMarkup] = None,
+        parse_mode: str = ParseMode.HTML,
+    ) -> Any:
         if query.message:
-            return await query.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
+            return await query.message.reply_text(
+                text,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup,
+            )
         return None
 
     try:
@@ -1753,7 +1819,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             lines = ["🌍 <b>Global Rank Top 10</b>", ""]
             for idx, r in enumerate(rows):
                 lines.append(f"{medals.get(idx, f'{idx + 1}.')} <b>{r.get('first_name', 'Player')}</b> — <code>{int(r.get('coins', 0))}</code> coins")
-            await reply_cb("\n".join(lines))
+            await reply_cb("
+".join(lines))
             return
 
         if data == "menu_gtop":
@@ -1766,7 +1833,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             lines = [f"👥 <b>{chat.title or 'Group'} Top 10</b>", ""]
             for idx, r in enumerate(rows):
                 lines.append(f"{medals.get(idx, f'{idx + 1}.')} <b>{r.get('name', 'Player')}</b> — <code>{int(r.get('net_coins', 0))}</code> net")
-            await reply_cb("\n".join(lines))
+            await reply_cb("
+".join(lines))
             return
 
         if data == "menu_mines":
@@ -1849,8 +1917,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if query.message:
                 try:
                     await query.message.edit_text(
-                        f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)\n"
-                        f"<b>{u.first_name}</b> ne <b>{choice}</b> chuna — ab bet amount chuno:\n\n"
+                        f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)
+"
+                        f"<b>{u.first_name}</b> ne <b>{choice}</b> chuna — ab bet amount chuno:
+
+"
                         f"{format_locked_bets_text(round_obj)}",
                         parse_mode=ParseMode.HTML,
                         reply_markup=bet_kb,
@@ -1887,14 +1958,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if query.message:
                 if round_obj["game"] == "aviator":
                     kb = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
-                    header = f"🚀 <b>Aviator Group Round</b> ({ROUND_SECONDS}s entry)\nApni bet lock karo!"
+                    header = f"🚀 <b>Aviator Group Round</b> ({ROUND_SECONDS}s entry)
+Apni bet lock karo!"
                 else:
                     kb = game_choice_keyboard(round_obj["game"], round_id)
-                    header = f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)\nBaaki members apni choice &amp; bet lock kar sakte hain:"
+                    header = f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)
+Baaki members apni choice &amp; bet lock kar sakte hain:"
 
                 try:
                     await query.message.edit_text(
-                        f"{header}\n\n{format_locked_bets_text(round_obj)}",
+                        f"{header}
+
+{format_locked_bets_text(round_obj)}",
                         parse_mode=ParseMode.HTML,
                         reply_markup=kb,
                     )
@@ -1930,12 +2005,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
             if query.message:
                 cashout_btn = InlineKeyboardMarkup(
-                    [[btn(f"💸 Cash Out ({mult:.1f}x)", f"av_cash:{round_id}", "success")]]
+                    [[stylish_btn(f"💸 Cash Out ({mult:.1f}x)", f"av_cash:{round_id}", "success")]]
                 )
                 try:
                     await query.message.edit_text(
-                        f"🚀 <b>Aviator Live:</b> <code>{mult:.1f}x</code>\n"
-                        f"⚡ Crash hone se pehle Cash Out dabao!\n\n"
+                        f"🚀 <b>Aviator Live:</b> <code>{mult:.1f}x</code>
+"
+                        f"⚡ Crash hone se pehle Cash Out dabao!
+
+"
                         f"{format_aviator_cashout_feed(flight)}",
                         parse_mode=ParseMode.HTML,
                         reply_markup=cashout_btn,
@@ -1968,7 +2046,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 if query.message:
                     try:
                         await query.message.edit_text(
-                            f"💥 <b>Boom! Mine Hit</b> — <b>{u.first_name}</b>\n"
+                            f"💥 <b>Boom! Mine Hit</b> — <b>{u.first_name}</b>
+"
                             f"Bet <code>{game['bet']}</code> gaya.",
                             parse_mode=ParseMode.HTML,
                             reply_markup=build_mines_keyboard(game, reveal_all=True, finished=True),
@@ -1990,7 +2069,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 if query.message:
                     try:
                         await query.message.edit_text(
-                            f"🏆 <b>Board Clear!</b> <b>{u.first_name}</b> ne <code>{payout}</code> coins ({mult}x) jeete!\n"
+                            f"🏆 <b>Board Clear!</b> <b>{u.first_name}</b> ne <code>{payout}</code> coins ({mult}x) jeete!
+"
                             f"🪙 <b>Balance:</b> <code>{bal}</code>",
                             parse_mode=ParseMode.HTML,
                             reply_markup=build_mines_keyboard(game, reveal_all=True, finished=True),
@@ -2003,7 +2083,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if query.message:
                 try:
                     await query.message.edit_text(
-                        f"💣 <b>Mines</b> · {game['mines_count']} mines · bet <code>{game['bet']}</code> · <b>{u.first_name}</b>\n"
+                        f"💣 <b>Mines</b> · {game['mines_count']} mines · bet <code>{game['bet']}</code> · <b>{u.first_name}</b>
+"
                         f"✨ Current: <code>{mult}x</code> (Payout: <code>{payout}</code>)",
                         parse_mode=ParseMode.HTML,
                         reply_markup=build_mines_keyboard(game, reveal_all=False, finished=False),
@@ -2025,7 +2106,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if query.message:
                 try:
                     await query.message.edit_text(
-                        f"💰 <b>Cashed Out!</b> <b>{u.first_name}</b> ne <code>{mult}x</code> par <code>{payout}</code> coins nikale!\n"
+                        f"💰 <b>Cashed Out!</b> <b>{u.first_name}</b> ne <code>{mult}x</code> par <code>{payout}</code> coins nikale!
+"
                         f"🪙 <b>Balance:</b> <code>{bal}</code>",
                         parse_mode=ParseMode.HTML,
                         reply_markup=build_mines_keyboard(game, reveal_all=True, finished=True),
@@ -2062,8 +2144,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             }
             ACTIVE_TTT5[chat_id] = game
             msg = await reply_cb(
-                f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{entry_bet}</code> coins\n"
-                f"{format_ttt5_roster(game)}\n"
+                f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{entry_bet}</code> coins
+"
+                f"{format_ttt5_roster(game)}
+"
                 f"⏳ Join karne ke liye <b>{TTT_JOIN_SECONDS}s</b> bache hain!",
                 reply_markup=build_ttt5_keyboard(game, finished=False),
             )
@@ -2096,8 +2180,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if query.message:
                 try:
                     await query.message.edit_text(
-                        f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{game['bet']}</code> coins\n"
-                        f"{format_ttt5_roster(game)}\n"
+                        f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{game['bet']}</code> coins
+"
+                        f"{format_ttt5_roster(game)}
+"
                         f"⏳ Join karne ke liye <b>{TTT_JOIN_SECONDS}s</b> window chal rahi hai!",
                         parse_mode=ParseMode.HTML,
                         reply_markup=build_ttt5_keyboard(game, finished=False),
@@ -2135,8 +2221,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if query.message:
                 try:
                     await query.message.edit_text(
-                        f"❎ <b>5x5 Tic Tac Toe</b>\n"
-                        f"{format_ttt5_roster(game)}\n"
+                        f"❎ <b>5x5 Tic Tac Toe</b>
+"
+                        f"{format_ttt5_roster(game)}
+"
                         f"🎯 Turn: {next_p['mark']} <b>{next_p['name']}</b> ({TTT_TURN_SECONDS}s)",
                         parse_mode=ParseMode.HTML,
                         reply_markup=build_ttt5_keyboard(game, finished=False),
@@ -2202,8 +2290,12 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 # ==============================================================================
-# BOT COMMAND MENU SCOPING (Owner commands excluded)
+# ERROR HANDLER & BOT COMMAND MENU SCOPING
 # ==============================================================================
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error("Unhandled exception while processing update:", exc_info=context.error)
+
+
 MEMBER_COMMANDS = [
     BotCommand("start", "Main menu kholein"),
     BotCommand("help", "Simple game & coin guide"),
@@ -2266,6 +2358,7 @@ def main() -> None:
 
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_plain_text))
+    app.add_error_handler(error_handler)
 
     logger.info("Starting Telegram Game Bot polling...")
     app.run_polling(drop_pending_updates=True)
