@@ -8,7 +8,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Flask, jsonify
 from pymongo import MongoClient, ReturnDocument
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    BotCommand,
+    BotCommandScopeAllGroupChats,
+    BotCommandScopeDefault,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Update,
+)
 from telegram.constants import ChatType, ParseMode
 from telegram.error import Forbidden, RetryAfter, TelegramError, TimedOut
 from telegram.ext import (
@@ -56,6 +63,19 @@ BET_OPTIONS = [10, 50, 100, 250, 500, 1000]
 CARD_RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
 CARD_SUITS = ["♠", "♥", "♦", "♣"]
 TTT_MARKS = ["❌", "⭕", "🔷", "🔶", "⭐", "🍀"]
+
+MEMBER_COMMANDS = [
+    BotCommand("start", "Open Arcade Hub"),
+    BotCommand("help", "How to play & rules"),
+    BotCommand("bal", "Check coins & stats"),
+    BotCommand("daily", "Claim daily coins"),
+    BotCommand("refill", "Free refill when 0 coins"),
+    BotCommand("ref", "Get referral link"),
+    BotCommand("give", "Send coins to a player"),
+    BotCommand("gtop", "Group leaderboard"),
+    BotCommand("top", "Global leaderboard"),
+    BotCommand("mines", "Start Mines game"),
+]
 
 DAILY_DIALOGUES = [
     "Rozana ka dose aa gaya! +{amt} coins account mein—samajh kar khelo.",
@@ -1590,7 +1610,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "• <b>R-P-S &amp; Hi-Lo:</b> DM mein instant, group mein 10s round + final result list.\n"
         "• <b>5x5 Tic Tac Toe:</b> 6s entry window, 5x5 grid—jiska sabse zyada line/score banega wahi jeetega.\n"
         "• <b>Mines:</b> <code>2, 4, 5, 7, 9</code> bombs chuno aur cash out karo.\n"
-        "• <b>Commands:</b> <code>/bal</code>, <code>/daily</code>, <code>/refill</code>, <code>/ref</code>, <code>/give</code>, <code>/gtop</code>, <code>/top</code>"
+        "• <b>Commands:</b> <code>/bal</code>, <code>/daily</code>, <code>/refill</code>, <code>/ref</code>, <code>/give</code>, <code>/gtop</code>, <code>/top</code>, <code>/mines</code>"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
@@ -2265,6 +2285,14 @@ async def track_chat_activity(update: Update, context: ContextTypes.DEFAULT_TYPE
         db.register_chat(update.effective_chat.id, update.effective_chat.type, update.effective_chat.title)
 
 
+async def setup_bot_commands(app: Application) -> None:
+    try:
+        await app.bot.set_my_commands(MEMBER_COMMANDS, scope=BotCommandScopeDefault())
+        await app.bot.set_my_commands(MEMBER_COMMANDS, scope=BotCommandScopeAllGroupChats())
+    except TelegramError as exc:
+        logger.warning("Failed to set bot commands: %s", exc)
+
+
 flask_app = Flask(__name__)
 
 
@@ -2310,6 +2338,7 @@ async def run_bot_forever() -> None:
             logger.info("Initializing Telegram bot...")
             await app.initialize()
             await app.start()
+            await setup_bot_commands(app)
             await app.updater.start_polling(
                 allowed_updates=Update.ALL_TYPES,
                 poll_interval=1.0,
