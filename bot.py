@@ -62,9 +62,9 @@ DAILY_COOLDOWN_SEC = 24 * 3600  # 24 hours (unchanged)
 REFILL_AMOUNT = 250
 REFILL_COOLDOWN_SEC = 30 * 60  # 30 minutes
 
-ROUND_SECONDS = 20  # 2x from 10s
+ROUND_SECONDS = 15  # updated from 20s to 15s
 TTT_JOIN_SECONDS = 12  # 2x from 6s
-TTT_TURN_SECONDS = 20  # 2x from 10s
+TTT_TURN_SECONDS = 15  # updated from 20s to 15s
 AUTO_DELETE_RESULT_SEC = 10  # auto-delete finished match/result message quickly
 
 AVIATOR_STEP_SEC = 0.45
@@ -664,20 +664,40 @@ def schedule_delete_messages(
     chat_id: int,
     message_ids: List[int],
     delay: int = AUTO_DELETE_RESULT_SEC,
-) -> None:
-    valid_ids = [m for m in message_ids if isinstance(m, int) and m > 0]
+) -> Optional[asyncio.Task]:
+    valid_ids = list(dict.fromkeys(m for m in message_ids if isinstance(m, int) and m > 0))
     if not valid_ids:
-        return
+        return None
 
     async def _worker() -> None:
-        await asyncio.sleep(max(1, delay))
+        await asyncio.sleep(max(0, delay))
         for mid in valid_ids:
-            try:
-                await bot.delete_message(chat_id=chat_id, message_id=mid)
-            except (BadRequest, Forbidden, TelegramError):
-                pass
+            deleted = False
+            for _ in range(3):
+                try:
+                    await bot.delete_message(chat_id=chat_id, message_id=mid)
+                    deleted = True
+                    break
+                except BadRequest as exc:
+                    err_low = str(exc).lower()
+                    if "message to delete not found" in err_low or "message can't be deleted" in err_low:
+                        deleted = True
+                        break
+                    await asyncio.sleep(0.4)
+                except (Forbidden, TelegramError):
+                    await asyncio.sleep(0.4)
+            if not deleted:
+                try:
+                    await bot.edit_message_text(
+                        chat_id=chat_id,
+                        message_id=mid,
+                        text="🗑 <i>Cleared</i>",
+                        parse_mode=ParseMode.HTML,
+                    )
+                except (BadRequest, Forbidden, TelegramError):
+                    pass
 
-    asyncio.create_task(_worker())
+    return asyncio.create_task(_worker())
 
 
 def format_slot_spin_anim(
@@ -688,11 +708,11 @@ def format_slot_spin_anim(
 ) -> str:
     t_name, t_icons = SLOT_THEMES.get(theme_key, SLOT_THEMES["classic"])
     order = ["cherry", "gem", "seven"]
-    win_ico, _ = t_icons.get(sym, ("🍒", "2.5x"))
+    win_ico, win_mult = t_icons.get(sym, ("🍒", "2.5x"))
 
     if won is True:
         reels = f"[ {win_ico} | {win_ico} | {win_ico} ]"
-        status = "JACKPOT / WIN"
+        status = f"WIN ({win_mult})"
     elif won is False:
         others = [k for k in order if k != sym]
         r2 = t_icons[random.choice(others)][0]
@@ -701,29 +721,29 @@ def format_slot_spin_anim(
         status = "MISS"
     else:
         reels = f"[ {win_ico} | {win_ico} | {win_ico} ]"
-        status = "SPIN"
+        status = f"SPIN ({win_mult})"
 
     pick_part = f" · Pick: <b>{picked.upper()}</b>" if picked else ""
-    return f"🎰 <b>Slots ({t_name}):</b> <code>{reels}</code> → <b>{sym.upper()}</b> ({status}{pick_part})"
+    return f"🎰 <b>Slots ({t_name}):</b> <code>{reels}</code> → <b>{sym.upper()}</b> [{status}]{pick_part}"
 
 
 def format_dice_roll_anim(roll: int, picked: Optional[str] = None) -> str:
     faces = {1: "⚀", 2: "⚁", 3: "⚂", 4: "⚃", 5: "⚄", 6: "⚅"}
-    strip = " · ".join(f"{faces[i]} <code>{i}</code>" for i in range(1, 7))
-    pick_line = f"🎯 Pick: <b>{picked}</b> | " if picked else ""
-    return f"🎲 <b>Dice Roll:</b> [{strip}] → <b>{faces.get(roll, '🎲')} {roll}</b> ({pick_line}Animated)"
+    strip = " ".join(f"{faces[i]}" for i in range(1, 7))
+    pick_line = f"Pick: <b>{picked}</b> · " if picked else ""
+    return f"🎲 <b>Dice:</b> <code>[{strip}]</code> → <b>{faces.get(roll, '🎲')} {roll}</b> ({pick_line}Rolled)"
 
 
 def format_sports_anim(sport_key: str, picked: Optional[str] = None) -> str:
     meta = {
-        "hoops": ("🏀", "Basketball Shot", "🏀💨🏀 → 🏀"),
-        "goal": ("⚽", "Penalty Kick", "👟💨⚽ → 🥅"),
-        "target": ("🎯", "Dart Throw", "🏹💨🎯 → 🎯"),
-        "strike": ("🎳", "Bowling Roll", "🎳💨🎳 → 💥"),
+        "hoops": ("🏀", "Basketball", "🏀 💨 ──▶ 🏀"),
+        "goal": ("⚽", "Football", "⚽ 💨 ──▶ 🥅"),
+        "target": ("🎯", "Darts", "🎯 💨 ──▶ 🎯"),
+        "strike": ("🎳", "Bowling", "🎳 💨 ──▶ 💥"),
     }
-    icon, label, track = meta.get(sport_key, ("🏀", "Sports Shot", "🏀💨🏀 → 🏀"))
-    pick_line = f"🎯 Pick: <b>{picked.upper()}</b> · " if picked else ""
-    return f"{icon} <b>{label}:</b> <code>{track}</code> ({pick_line}Live Action)"
+    icon, label, track = meta.get(sport_key, ("🏀", "Basketball", "🏀 💨 ──▶ 🏀"))
+    pick_line = f"Pick: <b>{picked.upper()}</b> · " if picked else ""
+    return f"{icon} <b>{label}:</b> <code>{track}</code> ({pick_line}Scored)"
 
 
 def help_text() -> str:
@@ -732,8 +752,8 @@ def help_text() -> str:
         "<b>🎮 Modes &amp; Players:</b>\n"
         "• <b>Aviator</b> (Single / Group Live Flight): <code>1.0x</code> se <code>0.2x</code> steps mein <code>7.0x</code> tak—crash se pehle <b>Cash Out</b> dabao. Group mein <code>20s</code> entry ke baad cash-out feed neeche dikhti hai.\n"
         "• <b>Mines</b> (Single / Group Parallel 2–4+): <code>2, 4, 5, 7, 9</code> bombs chuno, safe 💎 tiles kholo aur cash out karo. Group mein har player ka board alag hota hai.\n"
-        "• <b>5x5 Tic Tac Toe</b> (Group Multiplayer 2–6 / 3–4+): <code>12s</code> join window, alag-alag marks, <code>20s</code> turn—zyada lines banane wala jeetega.\n"
-        "• <b>R-P-S, Hi-Lo, Flip, Dice, Slots, Guess, Wheel &amp; Sports</b> (Solo DM / Group <code>20s</code> Round): Group mein <code>20s</code> round + sabki live bet lock list + end mein result.\n\n"
+        "• <b>5x5 Tic Tac Toe</b> (Group Multiplayer 2–6 / 3–4+): <code>12s</code> join window, alag-alag marks, <code>15s</code> turn—zyada lines banane wala jeetega.\n"
+        "• <b>R-P-S, Hi-Lo, Flip, Dice, Slots, Guess, Wheel &amp; Sports</b> (Solo DM / Group <code>20s</code> Round): Group mein <code>15s</code> round + sabki live bet lock list + end mein result.\n\n"
         "<b>🪙 Coins &amp; Commands:</b>\n"
         f"• <code>/daily</code> — Har <code>24h</code> mein <b>{DAILY_REWARD}</b> coins.\n"
         f"• <code>/refill</code> (ya <b>🪙 Refill</b>) — Har <code>30m</code> mein <b>{REFILL_AMOUNT}</b> coins.\n"
@@ -839,6 +859,7 @@ def build_mines_keyboard(game: Dict[str, Any], reveal_all: bool = False, finishe
             rows.append([stylish_btn(f"💰 Cash Out ({payout} | {mult}x)", "mcashout", "success")])
         else:
             rows.append([stylish_btn("💎 Safe Tile Chuno", "mnop", "muted")])
+        rows.append([stylish_btn("🚪 Bahar Jaao (Exit)", "mexit", "danger")])
 
     return InlineKeyboardMarkup(rows)
 
@@ -1216,30 +1237,38 @@ async def resolve_solo_game(
     else:
         final_bal = new_bal
 
+    solo_mids: List[int] = []
     if game_key in ("dice", "sports", "slots"):
         if game_key == "dice":
-            try:
-                await send_fn(dice_emoji="🎲")
-            except TypeError:
-                pass
+            d_emoji = "🎲"
         elif game_key == "slots":
-            try:
-                await send_fn(dice_emoji="🎰")
-            except TypeError:
-                pass
+            d_emoji = "🎰"
         else:
             emoji_map = {"hoops": "🏀", "goal": "⚽", "target": "🎯", "strike": "🎳"}
             d_emoji = emoji_map.get(sport_pick if "sport_pick" in locals() else choice, "🏀")
-            try:
-                await send_fn(dice_emoji=d_emoji)
-            except TypeError:
-                pass
-    await send_fn(
+        try:
+            d_sent = await send_fn(dice_emoji=d_emoji)
+            if d_sent and getattr(d_sent, "message_id", None):
+                solo_mids.append(int(d_sent.message_id))
+        except TypeError:
+            pass
+    res_msg = await send_fn(
         f"{outcome_text}\n"
         f"💰 <b>Bet:</b> <code>{bet}</code> · <b>Payout:</b> <code>{payout}</code>\n"
         f"🪙 <b>Balance:</b> <code>{final_bal}</code>",
         parse_mode=ParseMode.HTML,
     )
+    if res_msg and getattr(res_msg, "message_id", None):
+        solo_mids.append(int(res_msg.message_id))
+    if solo_mids:
+        try:
+            bot_ref = getattr(getattr(send_fn, "__closure__", [None])[0], "cell_contents", None)
+            if hasattr(bot_ref, "message") and getattr(bot_ref.message, "get_bot", None):
+                schedule_delete_messages(bot_ref.message.get_bot(), chat_id, solo_mids, AUTO_DELETE_RESULT_SEC)
+            elif hasattr(bot_ref, "get_bot"):
+                schedule_delete_messages(bot_ref.get_bot(), chat_id, solo_mids, AUTO_DELETE_RESULT_SEC)
+        except Exception:
+            pass
 
 
 async def resolve_solo_aviator(
@@ -1261,19 +1290,27 @@ async def resolve_solo_aviator(
     db.record_last_bet(user_id, bet)
     crash_m = round(random.uniform(1.2, 4.5), 1)
     target_m = round(random.uniform(1.1, min(3.5, crash_m)), 1)
+    av_msg = None
     if target_m < crash_m:
         payout = int(round(bet * target_m))
         final_b = db.adjust_coins(user_id, payout, chat_id=chat_id, name=name, won_delta=1, payout_amount=payout)
-        await send_fn(
+        av_msg = await send_fn(
             f"🚀 Cash Out at <b>{target_m:.1f}x</b> (Crash: {crash_m:.1f}x)\n"
             f"💰 Payout: <code>{payout}</code> · Bal: <code>{final_b}</code>",
             parse_mode=ParseMode.HTML,
         )
     else:
-        await send_fn(
+        av_msg = await send_fn(
             f"💥 Crashed at <b>{crash_m:.1f}x</b>! Loss: <code>{bet}</code> · Bal: <code>{bal}</code>",
             parse_mode=ParseMode.HTML,
         )
+    if av_msg and getattr(av_msg, "message_id", None):
+        try:
+            bot_ref = getattr(getattr(send_fn, "__closure__", [None])[0], "cell_contents", None)
+            if hasattr(bot_ref, "message") and getattr(bot_ref.message, "get_bot", None):
+                schedule_delete_messages(bot_ref.message.get_bot(), chat_id, [int(av_msg.message_id)], AUTO_DELETE_RESULT_SEC)
+        except Exception:
+            pass
 
 
 # ==============================================================================
@@ -1347,15 +1384,11 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
     def build_flight_track(mult_val: float, crashed: bool = False) -> str:
         span = max(0.1, AVIATOR_MAX_MULTIPLIER - AVIATOR_MIN_MULTIPLIER)
         ratio = max(0.0, min(1.0, (mult_val - AVIATOR_MIN_MULTIPLIER) / span))
-        track_len = 12
-        pos = min(track_len - 1, int(round(ratio * (track_len - 1))))
+        steps = max(1, int(round(ratio * 8)))
+        trail = "─" * steps
         if crashed:
-            cells = ["·"] * track_len
-            cells[pos] = "💥"
-            return "🛫[" + "".join(cells) + "]💥"
-        cells = ["·"] * track_len
-        cells[pos] = "🚀"
-        return "🛫[" + "".join(cells) + "]🎯"
+            return f"🛫{trail}💥 Crash @ {mult_val:.1f}x"
+        return f"🛫{trail}✈️ {mult_val:.1f}x"
 
     cur_mult = AVIATOR_MIN_MULTIPLIER
     while cur_mult <= crash_mult + 1e-9:
@@ -1842,6 +1875,76 @@ async def cmd_setmycoins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.reply_text(f"👑 Owner Balance Set to <code>{new_bal}</code>", parse_mode=ParseMode.HTML)
 
 
+async def cmd_setmywins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message or not is_owner(update.effective_user.id):
+        return
+    u = update.effective_user
+    db.ensure_user(u.id, u.first_name, u.username)
+    if not context.args:
+        await update.message.reply_text("Use: <code>/setmywins 25</code>", parse_mode=ParseMode.HTML)
+        return
+    try:
+        wins_val = max(0, int(context.args[0]))
+    except ValueError:
+        await update.message.reply_text("⚠️ Valid number daalo.", parse_mode=ParseMode.HTML)
+        return
+
+    doc = db.get_user(u.id) or {}
+    cur_played = int(doc.get("games_played", 0))
+    new_played = max(cur_played, wins_val)
+    if db.use_mongo and db.users_col is not None:
+        try:
+            db.users_col.update_one(
+                {"user_id": u.id},
+                {"$set": {"games_won": wins_val, "games_played": new_played}},
+            )
+        except PyMongoError:
+            pass
+    if u.id in db.mem_users:
+        db.mem_users[u.id]["games_won"] = wins_val
+        db.mem_users[u.id]["games_played"] = new_played
+
+    await update.message.reply_text(
+        f"👑 Owner Wins Set to <code>{wins_val}</code> (Played: <code>{new_played}</code>)",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def cmd_setmyloss(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message or not is_owner(update.effective_user.id):
+        return
+    u = update.effective_user
+    db.ensure_user(u.id, u.first_name, u.username)
+    if not context.args:
+        await update.message.reply_text("Use: <code>/setmyloss 10</code>", parse_mode=ParseMode.HTML)
+        return
+    try:
+        loss_val = max(0, int(context.args[0]))
+    except ValueError:
+        await update.message.reply_text("⚠️ Valid number daalo.", parse_mode=ParseMode.HTML)
+        return
+
+    doc = db.get_user(u.id) or {}
+    cur_wins = int(doc.get("games_won", 0))
+    new_played = cur_wins + loss_val
+    if db.use_mongo and db.users_col is not None:
+        try:
+            db.users_col.update_one(
+                {"user_id": u.id},
+                {"$set": {"games_loss": loss_val, "games_played": new_played}},
+            )
+        except PyMongoError:
+            pass
+    if u.id in db.mem_users:
+        db.mem_users[u.id]["games_loss"] = loss_val
+        db.mem_users[u.id]["games_played"] = new_played
+
+    await update.message.reply_text(
+        f"👑 Owner Loss Set to <code>{loss_val}</code> (Wins: <code>{cur_wins}</code> · Played: <code>{new_played}</code>)",
+        parse_mode=ParseMode.HTML,
+    )
+
+
 async def cmd_addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message or not is_owner(update.effective_user.id):
         return
@@ -2280,6 +2383,38 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     pass
             return
 
+        if data == "mexit":
+            game = ACTIVE_MINES.get((chat_id, u.id))
+            if not game:
+                await query.answer("Ye Mines game ab active nahi hai.", show_alert=True)
+                return
+            if game["user_id"] != u.id:
+                await query.answer("Ye board sirf iske owner ka hai!", show_alert=True)
+                return
+            ACTIVE_MINES.pop((chat_id, u.id), None)
+            if not game["revealed"]:
+                refund_amt = int(game["bet"])
+                bal = db.adjust_coins(u.id, refund_amt, chat_id=chat_id, name=u.first_name)
+                await query.answer("Game se bahar aa gaye, bet wapas mil gayi.")
+                status_line = f"🚪 <b>Bahar Aa Gaye</b> — {mention_user(u.id, u.first_name, u.username)}\nBet <code>{refund_amt}</code> refund ho gayi · Bal: <code>{bal}</code>"
+            else:
+                mult = mines_multiplier(len(game["revealed"]), game["mines_count"])
+                payout = int(game["bet"] * mult)
+                bal = db.adjust_coins(u.id, payout, chat_id=chat_id, name=u.first_name, won_delta=1, payout_amount=payout)
+                await query.answer(f"Exit & Cash Out: {payout} coins!")
+                status_line = f"🚪 <b>Exit &amp; Cash Out!</b> {mention_user(u.id, u.first_name, u.username)} ne <code>{mult}x</code> par <code>{payout}</code> coins nikale · Bal: <code>{bal}</code>"
+            if query.message:
+                try:
+                    await query.message.edit_text(
+                        status_line,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=build_mines_keyboard(game, reveal_all=True, finished=True),
+                    )
+                    schedule_delete_messages(context.application.bot, chat_id, [query.message.message_id], AUTO_DELETE_RESULT_SEC)
+                except (BadRequest, TelegramError):
+                    pass
+            return
+
         if data == "mcashout":
             game = ACTIVE_MINES.get((chat_id, u.id))
             if not game or game["user_id"] != u.id or not game["revealed"]:
@@ -2531,6 +2666,8 @@ def main() -> None:
 
     app.add_handler(CommandHandler("mycoins", cmd_mycoins))
     app.add_handler(CommandHandler("setmycoins", cmd_setmycoins))
+    app.add_handler(CommandHandler("setmywins", cmd_setmywins))
+    app.add_handler(CommandHandler("setmyloss", cmd_setmyloss))
     app.add_handler(CommandHandler("addcoins", cmd_addcoins))
     app.add_handler(CommandHandler("setcoins", cmd_setcoins))
     app.add_handler(CommandHandler("stats", cmd_stats))
