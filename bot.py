@@ -10,7 +10,7 @@ from flask import Flask, jsonify
 from pymongo import MongoClient, ReturnDocument
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatType, ParseMode
-from telegram.error import Forbidden, TelegramError
+from telegram.error import Forbidden, RetryAfter, TelegramError, TimedOut
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -951,15 +951,16 @@ def run_flask() -> None:
     flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
 
-def main() -> None:
-    if not BOT_TOKEN:
-        raise RuntimeError("BOT_TOKEN environment variable missing!")
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    threading.Thread(target=run_flask, daemon=True).start()
-    app = Application.builder().token(BOT_TOKEN).build()
+def build_bot_app() -> Application:
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .connect_timeout(20.0)
+        .read_timeout(30.0)
+        .get_updates_connect_timeout(20.0)
+        .get_updates_read_timeout(35.0)
+        .build()
+    )
 
     for cmd, fn in [
         ("start", cmd_start), ("help", cmd_help), ("bal", cmd_bal),
@@ -973,7 +974,34 @@ def main() -> None:
 
     app.add_handler(CallbackQueryHandler(on_callback_query))
     app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, track_chat_activity))
-    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    return app
+
+
+def main() -> None:
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN environment variable missing!")
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    threading.Thread(target=run_flask, daemon=True).start()
+
+    while True:
+        try:
+            app = build_bot_app()
+            logger.info("Starting Telegram bot polling...")
+            app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+            break
+        except RetryAfter as exc:
+            wait_sec = int(exc.retry_after) + 5
+            logger.warning("Telegram flood limit hit. Waiting %s seconds...", wait_sec)
+            time.sleep(wait_sec)
+        except TimedOut:
+            logger.warning("Telegram request timed out. Retrying in 8 seconds...")
+            time.sleep(8)
+        except TelegramError as exc:
+            logger.error("Telegram error (%s). Retrying in 10 seconds...", exc)
+            time.sleep(10)
 
 
 if __name__ == "__main__":
