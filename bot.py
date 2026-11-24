@@ -337,6 +337,8 @@ class DatabaseManager:
 
 db = DatabaseManager(MONGO_URI, DB_NAME)
 ACTIVE_MINES: Dict[Tuple[int, int], Dict[str, Any]] = {}
+
+
 def is_owner(user_id: Optional[int]) -> bool:
     return OWNER_ID is not None and user_id == OWNER_ID
 
@@ -952,6 +954,10 @@ def run_flask() -> None:
 def main() -> None:
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN environment variable missing!")
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     threading.Thread(target=run_flask, daemon=True).start()
     app = Application.builder().token(BOT_TOKEN).build()
 
