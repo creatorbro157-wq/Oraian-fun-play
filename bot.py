@@ -1,4 +1,4 @@
- import asyncio
+import asyncio
 import logging
 import os
 import random
@@ -55,27 +55,27 @@ CARD_RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
 CARD_SUITS = ["♠", "♥", "♦", "♣"]
 
 DAILY_DIALOGUES = [
-    "Lo bhai rozana ka chanda! +{amt} coins aa gaye—udaao mat, dhang se khelo.",
-    "Subah-shaam ka kharcha paani set! +{amt} coins jeb mein daal liye hain.",
-    "Daily dose aa gayi bhai! +{amt} coins ke saath leaderboard hilane ka time aa gaya.",
+    "Rozana ka dose aa gaya! +{amt} coins account mein—samajh kar khelo.",
+    "Naya din, naya mauka! +{amt} coins ke saath board hilao.",
+    "Daily coins credited! +{amt} coins lo aur game shuru karo.",
 ]
 
 REFILL_DIALOGUES = [
-    "Haaye re kismat! Pocket ekdum khali ho gayi. Ye lo +{amt} coins ki rescue bheekh—ab phir try kar le!",
-    "Kangal mode activated tha kya? +{amt} coins de diye hain, is baar samajh ke khelna!",
-    "Zero balance dekh kar daya aa gayi! +{amt} coins lo aur wapas line mein aao.",
+    "Balance 0 ho gaya tha—lo +{amt} coins ka rescue refill!",
+    "Pocket khali dekhi toh +{amt} coins bhej diye hain. Is baar clean khelo!",
+    "Fresh start ke liye +{amt} coins refill mil gaye hain.",
 ]
 
 MINES_WIN_DIALOGUES = [
-    "Cash Out maara bhai ne! Jahan darr wahan bachat—+{payout} coins (Profit: +{profit}) account mein!",
-    "Kya timing hai boss! Bomb phatne se pehle maal utha liya—+{payout} coins jeet gaye!",
-    "Smart khel gaya bhai! +{payout} coins ke saath group walon ko jalane ka mauka mil gaya.",
+    "Time par cash out kiya—+{payout} coins (Profit: +{profit})!",
+    "Safe exit! +{payout} coins jeet kar balance upar le aaye.",
+    "Smart move! +{payout} coins secure kar liye.",
 ]
 
 MINES_LOSS_DIALOGUES = [
-    "Booooom!! 💥 Diamond samajh kar bomb daba diya. {bet} coins hawa mein ud gaye!",
-    "Arre bhai! Ek step aur bachna tha bas—bomb ne poora hisaab barabar kar diya (-{bet} coins)!",
-    "Kismat ne dhokha de diya! {bet} coins ka blast ho gaya, agla round phir try kar.",
+    "Boom! Bomb hit ho gaya aur {bet} coins chale gaye.",
+    "Ek tile ne khel badal diya—{bet} coins loss.",
+    "Bomb trigger ho gaya! Agla round phir try karo.",
 ]
 
 
@@ -373,7 +373,7 @@ class DatabaseManager:
 db = DatabaseManager(MONGO_URI, DB_NAME)
 ACTIVE_MINES: Dict[Tuple[int, int], Dict[str, Any]] = {}
 ACTIVE_ROUNDS: Dict[int, Dict[str, Any]] = {}
-LOCKED_SOLO_MESSAGES: set[Tuple[int, int]] = set()
+LOCKED_SOLO_MESSAGES: Dict[Tuple[int, int], float] = {}
 
 
 def is_owner(user_id: Optional[int]) -> bool:
@@ -408,15 +408,26 @@ def calc_mines_multiplier(revealed_count: int, mines_count: int = 4) -> float:
     return round(max(1.03, min(raw_mult, 50.0)), 2)
 
 
+def cleanup_locked_messages() -> None:
+    now = time.time()
+    expired = [k for k, ts in LOCKED_SOLO_MESSAGES.items() if now - ts > 1800]
+    for k in expired:
+        LOCKED_SOLO_MESSAGES.pop(k, None)
+
+
+async def safe_delete_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int) -> None:
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except TelegramError:
+        pass
+
+
 async def schedule_delete_messages(
     context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_ids: List[int], delay_sec: float
 ) -> None:
     await asyncio.sleep(delay_sec)
     for mid in message_ids:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=mid)
-        except TelegramError:
-            pass
+        await safe_delete_message(context, chat_id, mid)
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
@@ -435,7 +446,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("🎡 Lucky Wheel", callback_data="pick_game:color"),
-            InlineKeyboardButton("🏀 Sports (4)", callback_data="menu_sports"),
+            InlineKeyboardButton("🏀 Sports", callback_data="menu_sports"),
         ],
         [
             InlineKeyboardButton("👤 Profile", callback_data="act_profile"),
@@ -494,8 +505,8 @@ def bet_keyboard(
         for b in BET_OPTIONS[3:]
     ]
     row3 = [
-        InlineKeyboardButton(f"🌗 Half ({half_amt})", callback_data=f"u:{user_id}:bet:{game_prefix}:{half_amt}{suffix}"),
-        InlineKeyboardButton(f"🚀 Max ({max_amt})", callback_data=f"u:{user_id}:bet:{game_prefix}:{max_amt}{suffix}"),
+        InlineKeyboardButton(f"½ Half ({half_amt})", callback_data=f"u:{user_id}:bet:{game_prefix}:{half_amt}{suffix}"),
+        InlineKeyboardButton(f"💥 Max ({max_amt})", callback_data=f"u:{user_id}:bet:{game_prefix}:{max_amt}{suffix}"),
     ]
     rows = [row1, row2, row3]
     if user_coins <= 0:
@@ -507,60 +518,57 @@ def bet_keyboard(
     return InlineKeyboardMarkup(rows)
 
 
-def solo_choice_keyboard(user_id: int, game_type: str, bet: int, base_card: Optional[str] = None) -> InlineKeyboardMarkup:
+def solo_choice_keyboard(user_id: int, game_type: str, bet: int, base_card: str = "none") -> InlineKeyboardMarkup:
     if game_type == "flip":
         return InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("👑 Heads", callback_data=f"u:{user_id}:sgo:flip:{bet}:heads"),
-                InlineKeyboardButton("🦅 Tails", callback_data=f"u:{user_id}:sgo:flip:{bet}:tails"),
+                InlineKeyboardButton("👑 Heads", callback_data=f"u:{user_id}:sgo:flip:{bet}:heads:none"),
+                InlineKeyboardButton("🦅 Tails", callback_data=f"u:{user_id}:sgo:flip:{bet}:tails:none"),
             ],
             [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
         ])
     if game_type == "dice":
         return InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("🔢 Odd (1,3,5)", callback_data=f"u:{user_id}:sgo:dice:{bet}:odd"),
-                InlineKeyboardButton("🔢 Even (2,4,6)", callback_data=f"u:{user_id}:sgo:dice:{bet}:even"),
-                InlineKeyboardButton("🎯 High (4-6)", callback_data=f"u:{user_id}:sgo:dice:{bet}:high"),
+                InlineKeyboardButton("🔢 Odd (1,3,5)", callback_data=f"u:{user_id}:sgo:dice:{bet}:odd:none"),
+                InlineKeyboardButton("🔢 Even (2,4,6)", callback_data=f"u:{user_id}:sgo:dice:{bet}:even:none"),
+                InlineKeyboardButton("🎯 High (4-6)", callback_data=f"u:{user_id}:sgo:dice:{bet}:high:none"),
             ],
             [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
         ])
     if game_type == "cards":
         return InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("⬆️ Higher", callback_data=f"u:{user_id}:sgo:cards:{bet}:high"),
-                InlineKeyboardButton("⬇️ Lower", callback_data=f"u:{user_id}:sgo:cards:{bet}:low"),
+                InlineKeyboardButton("⬆️ Higher", callback_data=f"u:{user_id}:sgo:cards:{bet}:high:{base_card}"),
+                InlineKeyboardButton("⬇️ Lower", callback_data=f"u:{user_id}:sgo:cards:{bet}:low:{base_card}"),
             ],
             [
-                InlineKeyboardButton("🔴 Red", callback_data=f"u:{user_id}:sgo:cards:{bet}:red"),
-                InlineKeyboardButton("⚫ Black", callback_data=f"u:{user_id}:sgo:cards:{bet}:black"),
+                InlineKeyboardButton("🔴 Red", callback_data=f"u:{user_id}:sgo:cards:{bet}:red:{base_card}"),
+                InlineKeyboardButton("⚫ Black", callback_data=f"u:{user_id}:sgo:cards:{bet}:black:{base_card}"),
             ],
             [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
         ])
     if game_type == "guess":
-        r1 = [InlineKeyboardButton(str(n), callback_data=f"u:{user_id}:sgo:guess:{bet}:{n}") for n in range(1, 6)]
-        r2 = [InlineKeyboardButton(str(n), callback_data=f"u:{user_id}:sgo:guess:{bet}:{n}") for n in range(6, 11)]
+        r1 = [InlineKeyboardButton(str(n), callback_data=f"u:{user_id}:sgo:guess:{bet}:{n}:none") for n in range(1, 6)]
+        r2 = [InlineKeyboardButton(str(n), callback_data=f"u:{user_id}:sgo:guess:{bet}:{n}:none") for n in range(6, 11)]
         return InlineKeyboardMarkup([r1, r2, [InlineKeyboardButton("❌ Close", callback_data="msg_close")]])
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🔴 Red (2x)", callback_data=f"u:{user_id}:sgo:color:{bet}:red"),
-            InlineKeyboardButton("🟢 Green (2x)", callback_data=f"u:{user_id}:sgo:color:{bet}:green"),
-            InlineKeyboardButton("🟣 Violet (4.5x)", callback_data=f"u:{user_id}:sgo:color:{bet}:violet"),
+            InlineKeyboardButton("🔴 Red (2x)", callback_data=f"u:{user_id}:sgo:color:{bet}:red:none"),
+            InlineKeyboardButton("🟢 Green (2x)", callback_data=f"u:{user_id}:sgo:color:{bet}:green:none"),
+            InlineKeyboardButton("🟣 Violet (4.5x)", callback_data=f"u:{user_id}:sgo:color:{bet}:violet:none"),
         ],
         [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
     ])
 
 
-def post_solo_keyboard(user_id: int, replay_cb: str, bet: int, flex_txt: str) -> InlineKeyboardMarkup:
+def post_solo_keyboard(user_id: int, replay_cb: str, bet: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(f"🔁 Play again ({bet})", callback_data=f"u:{user_id}:{replay_cb}"),
-            InlineKeyboardButton("↩️ Reply", switch_inline_query_current_chat=flex_txt),
-        ],
-        [
             InlineKeyboardButton("🎮 Games", callback_data="menu_home"),
-            InlineKeyboardButton("❌ Close", callback_data="msg_close"),
         ],
+        [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
     ])
 
 
@@ -612,8 +620,8 @@ def round_bet_keyboard(user_id: int, game_type: str, choice: str, user_coins: in
     r1 = [InlineKeyboardButton(str(b), callback_data=f"u:{user_id}:rbet:{game_type}:{choice}:{b}") for b in BET_OPTIONS[:3]]
     r2 = [InlineKeyboardButton(str(b), callback_data=f"u:{user_id}:rbet:{game_type}:{choice}:{b}") for b in BET_OPTIONS[3:]]
     r3 = [
-        InlineKeyboardButton(f"🌗 Half ({half_amt})", callback_data=f"u:{user_id}:rbet:{game_type}:{choice}:{half_amt}"),
-        InlineKeyboardButton(f"🚀 Max ({max_amt})", callback_data=f"u:{user_id}:rbet:{game_type}:{choice}:{max_amt}"),
+        InlineKeyboardButton(f"½ Half ({half_amt})", callback_data=f"u:{user_id}:rbet:{game_type}:{choice}:{half_amt}"),
+        InlineKeyboardButton(f"💥 Max ({max_amt})", callback_data=f"u:{user_id}:rbet:{game_type}:{choice}:{max_amt}"),
     ]
     return InlineKeyboardMarkup([r1, r2, r3])
 
@@ -631,9 +639,9 @@ def build_mines_keyboard(game: Dict[str, Any], reveal_all: bool = False) -> Inli
             if idx in revealed_set:
                 label = "💎"
             elif reveal_all:
-                label = "💣" if idx in mines_set else "🔹"
+                label = "💣" if idx in mines_set else "▪"
             else:
-                label = "⬜"
+                label = "▪"
             row_btns.append(InlineKeyboardButton(label, callback_data=f"u:{uid}:mines_pick:{idx}"))
         rows.append(row_btns)
 
@@ -647,18 +655,14 @@ def build_mines_keyboard(game: Dict[str, Any], reveal_all: bool = False) -> Inli
     else:
         rows.append([
             InlineKeyboardButton(f"🔁 Play again ({game['bet']})", callback_data=f"u:{uid}:replay:mines:{game['bet']}:{game['mines_count']}"),
-            InlineKeyboardButton("↩️ Reply", switch_inline_query_current_chat=f"Mines {game['bet']} ({game['mines_count']} bombs)!"),
-        ])
-        rows.append([
             InlineKeyboardButton("🎮 Games", callback_data="menu_home"),
-            InlineKeyboardButton("❌ Close", callback_data="msg_close"),
         ])
+        rows.append([InlineKeyboardButton("❌ Close", callback_data="msg_close")])
 
     return InlineKeyboardMarkup(rows)
 
 
 async def resolve_solo_game(
-    update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     chat_id: int,
     user_id: int,
@@ -690,7 +694,7 @@ async def resolve_solo_game(
         outcome = random.choice(["heads", "tails"])
         won = (choice == outcome)
         payout = bet * 2 if won else 0
-        headline = f"🪙 <b>Coin Flip</b> — <b>{name}</b>"
+        headline = f"🪙 <b>Coin Flip</b> · bet {bet}"
         detail_line = f"Choice: <b>{choice.upper()}</b> | Result: <b>{outcome.upper()}</b>"
 
     elif game_type == "dice":
@@ -709,7 +713,7 @@ async def resolve_solo_game(
             won = (val >= 4)
             mult = 2.4 if val == 6 else (1.8 if won else 0.0)
         payout = int(bet * mult) if won else 0
-        headline = f"🎲 <b>Dice ({choice.upper()})</b> — <b>{name}</b>"
+        headline = f"🎲 <b>Dice ({choice.upper()})</b> · bet {bet}"
         detail_line = f"Roll: <b>{val}</b>"
 
     elif game_type == "slots":
@@ -721,11 +725,11 @@ async def resolve_solo_game(
         won = (val >= 43 or val in (1, 22, 43, 64))
         mult = 4.0 if val == 64 else (2.0 if won else 0.0)
         payout = int(bet * mult) if won else 0
-        headline = f"🎰 <b>Slots</b> — <b>{name}</b>"
+        headline = f"🎰 <b>Slots</b> · bet {bet}"
         detail_line = f"Spin Value: <b>{val}</b> ({mult}x)"
 
     elif game_type == "cards":
-        b_card = base_card or f"{CARD_RANKS[random.randint(0, len(CARD_RANKS)-2)]}{random.choice(CARD_SUITS)}"
+        b_card = base_card if (base_card and base_card != "none") else f"{CARD_RANKS[random.randint(0, len(CARD_RANKS)-2)]}{random.choice(CARD_SUITS)}"
         b_idx = CARD_RANKS.index(b_card[:-1])
         n_idx = random.randint(0, len(CARD_RANKS) - 1)
         n_suit = random.choice(CARD_SUITS)
@@ -740,7 +744,7 @@ async def resolve_solo_game(
         else:
             won = (not is_red)
         payout = int(bet * 1.9) if won else 0
-        headline = f"🃏 <b>Cards ({choice.upper()})</b> — <b>{name}</b>"
+        headline = f"🃏 <b>Cards ({choice.upper()})</b> · bet {bet}"
         detail_line = f"Card: <code>{b_card}</code> ➡️ <b>{n_card}</b>"
 
     elif game_type == "guess":
@@ -758,15 +762,15 @@ async def resolve_solo_game(
             won = False
             payout = 0
             tag = "MISS"
-        headline = f"🔢 <b>Number Guess</b> — <b>{name}</b>"
-        detail_line = f"Your Pick: <b>{g_num}</b> | Secret: <b>{secret_num}</b> [{tag}]"
+        headline = f"🔢 <b>Number Guess</b> · bet {bet}"
+        detail_line = f"Pick: <b>{g_num}</b> | Secret: <b>{secret_num}</b> [{tag}]"
 
     elif game_type == "color":
         r_p = random.random()
         wheel = "violet" if r_p < 0.14 else ("red" if r_p < 0.57 else "green")
         won = (choice == wheel)
         payout = int(bet * (4.5 if wheel == "violet" else 2.0)) if won else 0
-        headline = f"🎡 <b>Lucky Wheel</b> — <b>{name}</b>"
+        headline = f"🎡 <b>Lucky Wheel</b> · bet {bet}"
         detail_line = f"Pick: <b>{choice.upper()}</b> | Result: <b>{wheel.upper()}</b>"
 
     else:
@@ -784,7 +788,7 @@ async def resolve_solo_game(
             await asyncio.sleep(3.0)
         won = pred_fn(val)
         payout = int(bet * mult_sp) if won else 0
-        headline = f"{em_char} <b>{sp_name}</b> — <b>{name}</b>"
+        headline = f"{em_char} <b>{sp_name}</b> · bet {bet}"
         detail_line = f"{win_txt if won else lose_txt} (Roll: <b>{val}</b>)"
 
     if won and payout > 0:
@@ -801,7 +805,7 @@ async def resolve_solo_game(
         text=f"{headline}\n{detail_line}\n{outcome_line}\n🪙 <b>Balance:</b> <code>{final_bal}</code>",
         parse_mode=ParseMode.HTML,
         reply_to_message_id=reply_to_id,
-        reply_markup=post_solo_keyboard(user_id, replay_cb, bet, f"{headline} ({bet})"),
+        reply_markup=post_solo_keyboard(user_id, replay_cb, bet),
     )
 
     if not is_private_chat(chat_id):
@@ -871,10 +875,7 @@ async def run_ten_sec_round(context: ContextTypes.DEFAULT_TYPE, chat_id: int, ga
     if not finished:
         return
 
-    try:
-        await msg.delete()
-    except TelegramError:
-        pass
+    await safe_delete_message(context, chat_id, msg.message_id)
 
     entries: Dict[int, Dict[str, Any]] = finished["entries"]
     if not entries:
@@ -886,16 +887,19 @@ async def run_ten_sec_round(context: ContextTypes.DEFAULT_TYPE, chat_id: int, ga
         asyncio.create_task(schedule_delete_messages(context, chat_id, [empty_msg.message_id], 15))
         return
 
+    extra_delete_ids: List[int] = []
     if game_type == "flip":
         outcome_str = random.choice(["heads", "tails"])
         reveal_line = f"🪙 Final Toss: <b>{outcome_str.upper()}</b>"
     elif game_type == "dice":
         d_msg = await context.bot.send_dice(chat_id=chat_id, emoji="🎲")
+        extra_delete_ids.append(d_msg.message_id)
         val = d_msg.dice.value if d_msg.dice else random.randint(1, 6)
         await asyncio.sleep(2.5)
         reveal_line = f"🎲 Dice Roll: <b>{val}</b> ({'ODD' if val % 2 == 1 else 'EVEN'})"
     elif game_type == "slots":
         s_msg = await context.bot.send_dice(chat_id=chat_id, emoji="🎰")
+        extra_delete_ids.append(s_msg.message_id)
         val = s_msg.dice.value if s_msg.dice else random.randint(1, 64)
         await asyncio.sleep(2.5)
         reveal_line = f"🎰 Jackpot Value: <b>{val}</b>"
@@ -922,6 +926,7 @@ async def run_ten_sec_round(context: ContextTypes.DEFAULT_TYPE, chat_id: int, ga
         }
         em_c, sp_pred, sp_mult = sp_emoji_map[game_type]
         sp_m = await context.bot.send_dice(chat_id=chat_id, emoji=em_c)
+        extra_delete_ids.append(sp_m.message_id)
         val = sp_m.dice.value if sp_m.dice else random.randint(1, 6)
         await asyncio.sleep(2.5)
         sp_hit = sp_pred(val)
@@ -1006,15 +1011,14 @@ async def run_ten_sec_round(context: ContextTypes.DEFAULT_TYPE, chat_id: int, ga
         reply_markup=InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("🔁 New 10s Round", callback_data=f"round_start:{game_type}"),
-                InlineKeyboardButton("↩️ Reply", switch_inline_query_current_chat=f"{game_type} round result!"),
-            ],
-            [
                 InlineKeyboardButton("🎮 Games", callback_data="menu_home"),
-                InlineKeyboardButton("❌ Close", callback_data="msg_close"),
             ],
+            [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
         ]),
     )
-    asyncio.create_task(schedule_delete_messages(context, chat_id, [res_msg.message_id], AUTO_DELETE_RESULT_SEC))
+    asyncio.create_task(
+        schedule_delete_messages(context, chat_id, [res_msg.message_id] + extra_delete_ids, AUTO_DELETE_RESULT_SEC)
+    )
 
 
 async def start_mines_game(
@@ -1044,7 +1048,7 @@ async def start_mines_game(
     }
     ACTIVE_MINES[(chat_id, user_id)] = game
     await send_fn(
-        f"💣 <b>Mines</b> — <b>{name}</b>\n🪙 <b>Bet:</b> <code>{bet}</code> | <b>Bombs:</b> <code>{bombs}</code>\n🪙 <b>Balance:</b> <code>{new_bal}</code>",
+        f"💣 <b>Mines</b> · {bombs} mines · bet {bet}\nOpen safe tiles on a 5x5 field. Every 💎 raises your multiplier.\n🪙 <b>Balance:</b> <code>{new_bal}</code>",
         parse_mode=ParseMode.HTML,
         reply_markup=build_mines_keyboard(game, reveal_all=False),
     )
@@ -1070,10 +1074,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     mode_note = "⚡ <b>DM Mode:</b> Instant play (no 10s timer)!" if is_private_chat(c.id) else "⏳ <b>Group Mode:</b> 10s timer rounds + final result list!"
     bonus_note = f"\n🎉 <b>Referral Bonus:</b> +{bonus} coins!" if (is_new and bonus > 0) else ""
     text = (
-        f"👋 Swagat hai, <b>{u.first_name}</b>!\n"
+        f"🎮 <b>ARCADE HUB</b>\n"
         f"🪙 <b>Balance:</b> <code>{doc['coins']}</code> coins\n"
-        f"{mode_note}{bonus_note}\n\n"
-        f"<i>Global rank sab games ka total dikhata hai, aur group score is group ka alag rehta hai.</i>"
+        f"{mode_note}{bonus_note}\n"
+        f"<i>Pick a game and good luck!</i>"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=main_menu_keyboard())
 
@@ -1084,9 +1088,9 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     text = (
         "📖 <b>Arcade Guide</b>\n\n"
         "• <b>Personal Chat (DM):</b> Bina timer ke turant khelo.\n"
-        "• <b>Group Chat:</b> 10s timer round mein sab entry lock karte hain; 10s baad sabka final result list aata hai.\n"
+        "• <b>Group Chat:</b> 10s round mein sab entry lock karte hain; 10s baad sabka final result list aata hai.\n"
         "• <b>Mines:</b> <code>2, 4, 5, 7, 9</code> bombs chuno aur cash out karo.\n"
-        "• <b>Sports:</b> Basketball, Football, Darts, Bowling (animated rolls).\n"
+        "• <b>Sports:</b> Basketball, Football, Darts, Bowling.\n"
         "• <b>Commands:</b> <code>/bal</code>, <code>/daily</code>, <code>/refill</code>, <code>/ref</code>, <code>/give</code>, <code>/gtop</code>, <code>/top</code>"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
@@ -1238,7 +1242,7 @@ async def cmd_mines(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db.ensure_user(u.id, u.first_name, u.username)
     if not context.args:
         await update.message.reply_text(
-            "💣 <b>Mines</b> — How many mines? More mines = bigger multipliers.",
+            "💣 <b>Mines</b>\nHow many mines? More mines = bigger multipliers.",
             parse_mode=ParseMode.HTML,
             reply_markup=mines_bomb_keyboard(u.id),
         )
@@ -1358,16 +1362,14 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     query = update.callback_query
     if not query or not query.from_user or not query.message:
         return
+    cleanup_locked_messages()
     user, chat, data = query.from_user, query.message.chat, query.data or ""
     db.register_chat(chat.id, chat.type, chat.title)
     doc, _, _ = db.ensure_user(user.id, user.first_name, user.username)
 
     if data == "msg_close":
         await query.answer("Closed")
-        try:
-            await query.message.delete()
-        except TelegramError:
-            pass
+        await safe_delete_message(context, chat.id, query.message.message_id)
         return
 
     if data.startswith("u:"):
@@ -1383,7 +1385,7 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             if msg_lock_key in LOCKED_SOLO_MESSAGES:
                 await query.answer("Ye button pehle hi use ho chuka hai!", show_alert=True)
                 return
-            LOCKED_SOLO_MESSAGES.add(msg_lock_key)
+            LOCKED_SOLO_MESSAGES[msg_lock_key] = time.time()
 
         if sub == "mines_noop":
             await query.answer("Pehle 1 diamond tile kholo!")
@@ -1392,7 +1394,9 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         if sub == "refill_now":
             await query.answer()
             txt = await _handle_refill_logic(user.id, user.first_name, user.username, chat.id)
-            await query.message.reply_text(txt, parse_mode=ParseMode.HTML)
+            ref_m = await query.message.reply_text(txt, parse_mode=ParseMode.HTML)
+            if not is_private_chat(chat.id):
+                asyncio.create_task(schedule_delete_messages(context, chat.id, [ref_m.message_id], 20))
             return
 
         if sub.startswith("mines_bombs:"):
@@ -1412,44 +1416,35 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await query.answer()
             if g_type == "mines":
                 bombs = int(extra) if extra.isdigit() else 4
-                try:
-                    await query.message.delete()
-                except TelegramError:
-                    pass
+                await safe_delete_message(context, chat.id, query.message.message_id)
                 await start_mines_game(chat.id, user.id, user.first_name, user.username, bet, bombs, query.message.reply_text)
             elif g_type == "slots":
-                try:
-                    await query.message.delete()
-                except TelegramError:
-                    pass
-                await resolve_solo_game(update, context, chat.id, user.id, user.first_name, user.username, "slots", bet, "spin")
+                await safe_delete_message(context, chat.id, query.message.message_id)
+                await resolve_solo_game(context, chat.id, user.id, user.first_name, user.username, "slots", bet, "spin")
             elif g_type.startswith("sport_"):
-                try:
-                    await query.message.delete()
-                except TelegramError:
-                    pass
-                await resolve_solo_game(update, context, chat.id, user.id, user.first_name, user.username, g_type, bet, "shot")
+                await safe_delete_message(context, chat.id, query.message.message_id)
+                await resolve_solo_game(context, chat.id, user.id, user.first_name, user.username, g_type, bet, "shot")
             else:
-                b_card = None
+                b_card = "none"
+                extra_txt = ""
                 if g_type == "cards":
                     b_card = f"{CARD_RANKS[random.randint(0, len(CARD_RANKS)-2)]}{random.choice(CARD_SUITS)}"
-                extra_txt = f"\n🃏 Base Card: <code>{b_card}</code>" if b_card else ""
+                    extra_txt = f"\n🃏 Base Card: <code>{b_card}</code>"
                 await query.edit_message_text(
-                    f"🎯 <b>{user.first_name}</b> — Bet: <code>{bet}</code>{extra_txt}\nApna option chuno:",
+                    f"🎯 <b>{user.first_name}</b> · bet {bet}{extra_txt}\nApna option chuno:",
                     parse_mode=ParseMode.HTML,
                     reply_markup=solo_choice_keyboard(user.id, g_type, bet, b_card),
                 )
             return
 
         if sub.startswith("sgo:"):
-            _, g_type, bet_str, choice = sub.split(":", 3)
+            _, g_type, bet_str, choice, b_card = (sub.split(":") + ["none"])[:5]
             bet = int(bet_str)
             await query.answer()
-            try:
-                await query.message.delete()
-            except TelegramError:
-                pass
-            await resolve_solo_game(update, context, chat.id, user.id, user.first_name, user.username, g_type, bet, choice)
+            await safe_delete_message(context, chat.id, query.message.message_id)
+            await resolve_solo_game(
+                context, chat.id, user.id, user.first_name, user.username, g_type, bet, choice, base_card=b_card
+            )
             return
 
         if sub.startswith("rbet:"):
@@ -1458,10 +1453,7 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             rnd = ACTIVE_ROUNDS.get(chat.id)
             if not rnd or time.time() >= rnd["end_ts"]:
                 await query.answer("10s time up!", show_alert=True)
-                try:
-                    await query.message.delete()
-                except TelegramError:
-                    pass
+                await safe_delete_message(context, chat.id, query.message.message_id)
                 return
             if user.id in rnd["entries"]:
                 await query.answer("Ek round mein sirf 1 hi bet lagti hai!", show_alert=True)
@@ -1473,10 +1465,7 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             db.record_last_bet(user.id, bet)
             rnd["entries"][user.id] = {"name": user.first_name, "choice": choice, "bet": bet}
             await query.answer(f"✅ Locked ({bet})!")
-            try:
-                await query.message.delete()
-            except TelegramError:
-                pass
+            await safe_delete_message(context, chat.id, query.message.message_id)
             conf_msg = await context.bot.send_message(
                 chat.id,
                 f"✅ <b>{user.first_name}</b> locked <code>{bet}</code> on <b>{choice.upper()}</b>",
@@ -1491,11 +1480,13 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             bet = int(parts_r[2])
             extra = parts_r[3] if len(parts_r) > 3 else "4"
             await query.answer(f"🔁 Play again ({bet})!")
+            if not is_private_chat(chat.id):
+                await safe_delete_message(context, chat.id, query.message.message_id)
             if g_type == "mines":
                 bombs = int(extra) if extra.isdigit() else 4
                 await start_mines_game(chat.id, user.id, user.first_name, user.username, bet, bombs, query.message.reply_text)
             else:
-                await resolve_solo_game(update, context, chat.id, user.id, user.first_name, user.username, g_type, bet, extra)
+                await resolve_solo_game(context, chat.id, user.id, user.first_name, user.username, g_type, bet, extra)
             return
 
         game_key = (chat.id, user.id)
@@ -1521,6 +1512,8 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     parse_mode=ParseMode.HTML,
                     reply_markup=build_mines_keyboard(game, True),
                 )
+                if not is_private_chat(chat.id):
+                    asyncio.create_task(schedule_delete_messages(context, chat.id, [query.message.message_id], AUTO_DELETE_RESULT_SEC))
                 return
 
             idx = int(sub.split(":", 1)[1])
@@ -1537,6 +1530,8 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     parse_mode=ParseMode.HTML,
                     reply_markup=build_mines_keyboard(game, True),
                 )
+                if not is_private_chat(chat.id):
+                    asyncio.create_task(schedule_delete_messages(context, chat.id, [query.message.message_id], AUTO_DELETE_RESULT_SEC))
                 return
 
             game["revealed"].append(idx)
@@ -1554,11 +1549,13 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     parse_mode=ParseMode.HTML,
                     reply_markup=build_mines_keyboard(game, True),
                 )
+                if not is_private_chat(chat.id):
+                    asyncio.create_task(schedule_delete_messages(context, chat.id, [query.message.message_id], AUTO_DELETE_RESULT_SEC))
                 return
 
             await query.answer(f"💎 Safe! {mult}x")
             await query.edit_message_text(
-                f"💣 <b>Mines</b> — <b>{user.first_name}</b> ({game['mines_count']} 💣)\n🪙 Bet: <code>{game['bet']}</code> | Mult: <b>{mult}x</b> | Cash Out: <code>{cashout_amt}</code>",
+                f"💣 <b>Mines</b> · {game['mines_count']} mines · bet {game['bet']}\n🪙 Mult: <b>{mult}x</b> | Cash Out: <code>{cashout_amt}</code>",
                 parse_mode=ParseMode.HTML,
                 reply_markup=build_mines_keyboard(game, False),
             )
@@ -1568,7 +1565,7 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await query.answer()
         cur_doc = db.get_user(user.id) or {"coins": 0}
         await query.edit_message_text(
-            f"🎮 <b>Arcade Hub</b>\n🪙 <b>Balance:</b> <code>{cur_doc['coins']}</code> coins",
+            f"🎮 <b>ARCADE HUB</b>\n🪙 <b>Balance:</b> <code>{cur_doc['coins']}</code> coins\n<i>Pick a game and good luck!</i>",
             parse_mode=ParseMode.HTML,
             reply_markup=main_menu_keyboard(),
         )
@@ -1598,7 +1595,7 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         if is_private_chat(chat.id):
             cur_coins = (db.get_user(user.id) or {}).get("coins", 0)
             await query.edit_message_text(
-                f"🎮 <b>{user.first_name}</b>\n🪙 Balance: <code>{cur_coins}</code>\n👇 Choose your bet:",
+                f"🪙 <b>Balance:</b> <code>{cur_coins}</code> coins\n👇 Choose your bet:",
                 parse_mode=ParseMode.HTML,
                 reply_markup=bet_keyboard(user.id, g_type, user_coins=cur_coins),
             )
@@ -1615,7 +1612,7 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await query.answer()
             cur_coins = (db.get_user(user.id) or {}).get("coins", 0)
             await query.message.reply_text(
-                f"🪙 Balance: <code>{cur_coins}</code>\n👇 Choose your bet:",
+                f"🪙 <b>Balance:</b> <code>{cur_coins}</code> coins\n👇 Choose your bet:",
                 parse_mode=ParseMode.HTML,
                 reply_markup=bet_keyboard(user.id, g_type, user_coins=cur_coins),
             )
