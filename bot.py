@@ -914,7 +914,30 @@ async def finish_ttt5_game(app: Application, chat_id: int, reason: str = "Board 
 
 
 async def ttt5_turn_watcher(app: Application, chat_id: int, expected_turn_num: int) -> None:
-    await asyncio.sleep(TTT_TURN_SECONDS)
+    rem_turn = TTT_TURN_SECONDS
+    while rem_turn > 0:
+        await asyncio.sleep(min(3, rem_turn))
+        rem_turn = max(0, rem_turn - 3)
+        game = ACTIVE_TTT5.get(chat_id)
+        if not game or game.get("status") != "active" or game.get("turn_num") != expected_turn_num:
+            return
+        players = game["players"]
+        if players and rem_turn > 0:
+            cur_p = players[game["turn_idx"] % len(players)]
+            try:
+                await app.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=game["message_id"],
+                    text=(
+                        f"❎ <b>5x5 Tic Tac Toe</b>\n"
+                        f"{format_ttt5_roster(game)}\n"
+                        f"🎯 Turn: {cur_p['mark']} <b>{cur_p['name']}</b> (⏳ <code>{rem_turn}s</code>)"
+                    ),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=build_ttt5_keyboard(game, finished=False),
+                )
+            except (BadRequest, TelegramError):
+                pass
     game = ACTIVE_TTT5.get(chat_id)
     if not game or game.get("status") != "active" or game.get("turn_num") != expected_turn_num:
         return
@@ -957,7 +980,28 @@ async def ttt5_turn_watcher(app: Application, chat_id: int, expected_turn_num: i
 
 
 async def ttt5_join_countdown(app: Application, chat_id: int, message_id: int) -> None:
-    await asyncio.sleep(TTT_JOIN_SECONDS)
+    rem_join = TTT_JOIN_SECONDS
+    while rem_join > 0:
+        await asyncio.sleep(min(2, rem_join))
+        rem_join = max(0, rem_join - 2)
+        game = ACTIVE_TTT5.get(chat_id)
+        if not game or game.get("status") != "joining":
+            return
+        if rem_join > 0:
+            try:
+                await app.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=(
+                        f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{game['bet']}</code> coins\n"
+                        f"{format_ttt5_roster(game)}\n"
+                        f"⏳ Join karne ke liye <b>{rem_join}s</b> bache hain!"
+                    ),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=build_ttt5_keyboard(game, finished=False),
+                )
+            except (BadRequest, TelegramError):
+                pass
     game = ACTIVE_TTT5.get(chat_id)
     if not game or game.get("status") != "joining":
         return
@@ -1073,10 +1117,17 @@ async def resolve_solo_game(
         mult = {"2x": 2.0, "3x": 3.0, "5x": 5.0}.get(choice, 0.0) if won else 0.0
         outcome_text = f"{'🎉' if won else '💥'} Wheel: <b>{pocket}</b>"
     else:
-        sport_pick = random.choice(["hoops", "goal", "target", "strike"])
+        sport_sticker_map = {
+            "hoops": ("🏀", "Basketball"),
+            "goal": ("⚽", "Football Goal"),
+            "target": ("🎯", "Dart Bullseye"),
+            "strike": ("🎳", "Bowling Strike"),
+        }
+        sport_pick = random.choice(list(sport_sticker_map.keys()))
+        s_icon, s_label = sport_sticker_map[sport_pick]
         won = choice == sport_pick
         mult = 3.5 if won else 0.0
-        outcome_text = f"{'🎉' if won else '💥'} Shot: <b>{sport_pick.upper()}</b>"
+        outcome_text = f"{s_icon} {'🎉' if won else '💥'} <b>{s_label}</b> (<code>{sport_pick.upper()}</code>)"
 
     payout = int(round(bet * mult))
     if payout > 0:
@@ -1091,6 +1142,13 @@ async def resolve_solo_game(
     else:
         final_bal = new_bal
 
+    if game_key == "sports":
+        emoji_map = {"hoops": "🏀", "goal": "⚽", "target": "🎯", "strike": "🎳"}
+        d_emoji = emoji_map.get(choice, "🏀")
+        try:
+            await send_fn(dice_emoji=d_emoji)
+        except TypeError:
+            pass
     await send_fn(
         f"{outcome_text}\n"
         f"💰 <b>Bet:</b> <code>{bet}</code> · <b>Payout:</b> <code>{payout}</code>\n"
@@ -1192,6 +1250,19 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
     }
     round_obj["flight"] = flight_state
 
+    def build_flight_track(mult_val: float, crashed: bool = False) -> str:
+        span = max(0.1, AVIATOR_MAX_MULTIPLIER - AVIATOR_MIN_MULTIPLIER)
+        ratio = max(0.0, min(1.0, (mult_val - AVIATOR_MIN_MULTIPLIER) / span))
+        track_len = 12
+        pos = min(track_len - 1, int(round(ratio * (track_len - 1))))
+        if crashed:
+            cells = ["·"] * track_len
+            cells[pos] = "💥"
+            return "🛫[" + "".join(cells) + "]💥"
+        cells = ["·"] * track_len
+        cells[pos] = "🚀"
+        return "🛫[" + "".join(cells) + "]🎯"
+
     cur_mult = AVIATOR_MIN_MULTIPLIER
     while cur_mult <= crash_mult + 1e-9:
         flight_state["mult"] = round(cur_mult, 1)
@@ -1204,6 +1275,7 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
                 message_id=msg_id,
                 text=(
                     f"🚀 <b>Aviator Live:</b> <code>{cur_mult:.1f}x</code>\n"
+                    f"<code>{build_flight_track(cur_mult, crashed=False)}</code>\n"
                     f"⚡ Crash hone se pehle Cash Out dabao!\n\n"
                     f"{format_aviator_cashout_feed(flight_state)}"
                 ),
@@ -1225,6 +1297,7 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
 
     summary_lines = [
         f"💥 <b>Aviator Crashed at <code>{crash_mult:.1f}x</code>!</b>",
+        f"<code>{build_flight_track(crash_mult, crashed=True)}</code>",
         "",
         "📋 <b>Final Result (Sabka Ek Saath):</b>",
     ]
@@ -1331,8 +1404,15 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
             winning_choices = {pocket}
             mult_map = {"2x": 2.0, "3x": 3.0, "5x": 5.0}
     else:
-        sport_res = random.choice(["hoops", "goal", "target", "strike"])
-        outcome_label = f"🏀 Shot Result: <b>{sport_res.upper()}</b>"
+        sport_sticker_map = {
+            "hoops": ("🏀", "Basketball"),
+            "goal": ("⚽", "Football Goal"),
+            "target": ("🎯", "Dart Bullseye"),
+            "strike": ("🎳", "Bowling Strike"),
+        }
+        sport_res = random.choice(list(sport_sticker_map.keys()))
+        s_icon, s_label = sport_sticker_map[sport_res]
+        outcome_label = f"{s_icon} <b>{s_label}</b> (<code>{sport_res.upper()}</code>)"
         winning_choices = {sport_res}
         mult_map = {sport_res: 3.5}
 
@@ -1361,6 +1441,16 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
             f"• {tag} <b>{bdata['name']}</b> ({ch}) — Bet <code>{bet_amt}</code> → Payout <code>{payout}</code> (Bal: <code>{bal}</code>)"
         )
 
+    if game_key == "sports":
+        g_dice_map = {"hoops": "🏀", "goal": "⚽", "target": "🎯", "strike": "🎳"}
+        chosen_d = next((g_dice_map[k] for k in winning_choices if k in g_dice_map), "🏀")
+        try:
+            d_msg = await app.bot.send_dice(chat_id=chat_id, emoji=chosen_d)
+            if d_msg and getattr(d_msg, "message_id", None):
+                schedule_delete_messages(app.bot, chat_id, [d_msg.message_id], AUTO_DELETE_RESULT_SEC)
+        except (BadRequest, TelegramError):
+            pass
+
     try:
         await app.bot.edit_message_text(
             chat_id=chat_id,
@@ -1374,7 +1464,34 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
 
 
 async def group_round_timer_task(app: Application, chat_id: int, round_id: str) -> None:
-    await asyncio.sleep(ROUND_SECONDS)
+    remaining = ROUND_SECONDS
+    step = 2
+    while remaining > 0:
+        await asyncio.sleep(min(step, remaining))
+        remaining = max(0, remaining - step)
+        round_obj = ACTIVE_ROUNDS.get(chat_id)
+        if not round_obj or round_obj.get("id") != round_id or round_obj.get("phase") == "done":
+            return
+        msg_id = round_obj.get("message_id")
+        if not msg_id:
+            continue
+        if round_obj["game"] == "aviator":
+            kb = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
+            header = f"🚀 <b>Aviator Group Round</b> (⏳ <code>{remaining}s</code> left)\nApni bet lock karo!"
+        else:
+            kb = game_choice_keyboard(round_obj["game"], round_id)
+            header = f"🎮 <b>{round_obj['game'].upper()} Round</b> (⏳ <code>{remaining}s</code> left)\nChoice aur bet lock karo:"
+        try:
+            await app.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=msg_id,
+                text=f"{header}\n\n{format_locked_bets_text(round_obj)}",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb,
+            )
+        except (BadRequest, TelegramError):
+            pass
+
     await finalize_group_round(app, chat_id, round_id)
 
 
@@ -1717,17 +1834,23 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         db.record_chat(chat.id, chat.title or u.first_name, chat.type)
 
     async def reply_cb(
-        text: str,
+        text: str = "",
         reply_markup: Optional[InlineKeyboardMarkup] = None,
         parse_mode: str = ParseMode.HTML,
+        dice_emoji: Optional[str] = None,
     ) -> Any:
-        if query.message:
-            return await query.message.reply_text(
-                text,
-                parse_mode=parse_mode,
-                reply_markup=reply_markup,
-            )
-        return None
+        if not query.message:
+            return None
+        if dice_emoji:
+            try:
+                return await query.message.reply_dice(emoji=dice_emoji)
+            except (BadRequest, TelegramError):
+                pass
+        return await query.message.reply_text(
+            text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+        )
 
     try:
         if data == "back_menu":
