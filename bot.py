@@ -40,6 +40,8 @@ except ValueError:
     OWNER_ID = None
 
 ROUND_SECONDS = 10
+TTT_JOIN_SECONDS = 6
+TTT_TURN_SECONDS = 10
 AUTO_DELETE_RESULT_SEC = 35
 DAILY_REWARD = 500
 DAILY_COOLDOWN_SEC = 24 * 3600
@@ -53,6 +55,7 @@ MINES_BOMB_CHOICES = [2, 4, 5, 7, 9]
 BET_OPTIONS = [10, 50, 100, 250, 500, 1000]
 CARD_RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
 CARD_SUITS = ["♠", "♥", "♦", "♣"]
+TTT_MARKS = ["❌", "⭕", "🔷", "🔶", "⭐", "🍀"]
 
 DAILY_DIALOGUES = [
     "Rozana ka dose aa gaya! +{amt} coins account mein—samajh kar khelo.",
@@ -373,6 +376,9 @@ class DatabaseManager:
 db = DatabaseManager(MONGO_URI, DB_NAME)
 ACTIVE_MINES: Dict[Tuple[int, int], Dict[str, Any]] = {}
 ACTIVE_ROUNDS: Dict[int, Dict[str, Any]] = {}
+ACTIVE_TTT5: Dict[int, Dict[str, Any]] = {}
+ACTIVE_AVIATOR_SOLO: Dict[Tuple[int, int], Dict[str, Any]] = {}
+ACTIVE_AVIATOR_GROUP: Dict[int, Dict[str, Any]] = {}
 LOCKED_SOLO_MESSAGES: Dict[Tuple[int, int], float] = {}
 
 
@@ -396,6 +402,21 @@ def fmt_duration(seconds: float) -> str:
     return f"{secs}s"
 
 
+def generate_aviator_crash() -> float:
+    # Random crash between 1.0x and 7.0x in smooth 0.2x steps, weighted so every flight feels unique
+    r = random.random()
+    if r < 0.12:
+        raw = 1.0
+    elif r < 0.50:
+        raw = random.uniform(1.2, 2.4)
+    elif r < 0.82:
+        raw = random.uniform(2.4, 4.6)
+    else:
+        raw = random.uniform(4.6, 7.0)
+    stepped = round(round(raw / 0.2) * 0.2, 1)
+    return max(1.0, min(7.0, stepped))
+
+
 def calc_mines_multiplier(revealed_count: int, mines_count: int = 4) -> float:
     if revealed_count <= 0:
         return 1.0
@@ -406,6 +427,36 @@ def calc_mines_multiplier(revealed_count: int, mines_count: int = 4) -> float:
         prob *= (safe_tiles - i) / (total_tiles - i)
     raw_mult = 0.95 / max(prob, 1e-6)
     return round(max(1.03, min(raw_mult, 50.0)), 2)
+
+
+def count_ttt5_lines(board: List[Optional[str]], mark: str) -> int:
+    score = 0
+    lines: List[List[int]] = []
+    for r in range(5):
+        lines.append([r * 5 + c for c in range(5)])
+    for c in range(5):
+        lines.append([r * 5 + c for r in range(5)])
+    lines.append([0, 6, 12, 18, 24])
+    lines.append([4, 8, 12, 16, 20])
+    lines.append([1, 7, 13, 19])
+    lines.append([5, 11, 17, 23])
+    lines.append([3, 7, 11, 15])
+    lines.append([9, 13, 17, 21])
+    lines.append([2, 8, 14])
+    lines.append([10, 16, 22])
+    lines.append([2, 6, 10])
+    lines.append([14, 18, 22])
+
+    for line in lines:
+        run = 0
+        for idx in line:
+            if board[idx] == mark:
+                run += 1
+                if run >= 3:
+                    score += 1
+            else:
+                run = 0
+    return score
 
 
 def cleanup_locked_messages() -> None:
@@ -434,6 +485,14 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("💣 Mines", callback_data="menu_mines"),
+            InlineKeyboardButton("✈️ Aviator", callback_data="pick_game:aviator"),
+        ],
+        [
+            InlineKeyboardButton("✊ R-P-S", callback_data="pick_game:rps"),
+            InlineKeyboardButton("🔼 Hi-Lo", callback_data="pick_game:hilo"),
+        ],
+        [
+            InlineKeyboardButton("🎯 5x5 TicTacToe", callback_data="ttt5_start"),
             InlineKeyboardButton("🪙 Coin Flip", callback_data="pick_game:flip"),
         ],
         [
@@ -441,19 +500,16 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🎰 Slots", callback_data="pick_game:slots"),
         ],
         [
-            InlineKeyboardButton("🃏 Cards", callback_data="pick_game:cards"),
             InlineKeyboardButton("🔢 Number Guess", callback_data="pick_game:guess"),
+            InlineKeyboardButton("🎡 Lucky Wheel", callback_data="pick_game:color"),
         ],
         [
-            InlineKeyboardButton("🎡 Lucky Wheel", callback_data="pick_game:color"),
             InlineKeyboardButton("🏀 Sports", callback_data="menu_sports"),
+            InlineKeyboardButton("🎁 Daily", callback_data="act_daily"),
         ],
         [
             InlineKeyboardButton("👤 Profile", callback_data="act_profile"),
-            InlineKeyboardButton("🎁 Daily", callback_data="act_daily"),
             InlineKeyboardButton("🏆 Top", callback_data="act_top"),
-        ],
-        [
             InlineKeyboardButton("❓ Help", callback_data="act_help"),
         ],
     ])
@@ -519,6 +575,23 @@ def bet_keyboard(
 
 
 def solo_choice_keyboard(user_id: int, game_type: str, bet: int, base_card: str = "none") -> InlineKeyboardMarkup:
+    if game_type == "rps":
+        return InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("🪨 Rock", callback_data=f"u:{user_id}:sgo:rps:{bet}:rock:none"),
+                InlineKeyboardButton("📄 Paper", callback_data=f"u:{user_id}:sgo:rps:{bet}:paper:none"),
+                InlineKeyboardButton("✂️ Scissors", callback_data=f"u:{user_id}:sgo:rps:{bet}:scissors:none"),
+            ],
+            [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
+        ])
+    if game_type == "hilo":
+        return InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("⬆️ Higher", callback_data=f"u:{user_id}:sgo:hilo:{bet}:high:{base_card}"),
+                InlineKeyboardButton("⬇️ Lower", callback_data=f"u:{user_id}:sgo:hilo:{bet}:low:{base_card}"),
+            ],
+            [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
+        ])
     if game_type == "flip":
         return InlineKeyboardMarkup([
             [
@@ -533,18 +606,6 @@ def solo_choice_keyboard(user_id: int, game_type: str, bet: int, base_card: str 
                 InlineKeyboardButton("🔢 Odd (1,3,5)", callback_data=f"u:{user_id}:sgo:dice:{bet}:odd:none"),
                 InlineKeyboardButton("🔢 Even (2,4,6)", callback_data=f"u:{user_id}:sgo:dice:{bet}:even:none"),
                 InlineKeyboardButton("🎯 High (4-6)", callback_data=f"u:{user_id}:sgo:dice:{bet}:high:none"),
-            ],
-            [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
-        ])
-    if game_type == "cards":
-        return InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("⬆️ Higher", callback_data=f"u:{user_id}:sgo:cards:{bet}:high:{base_card}"),
-                InlineKeyboardButton("⬇️ Lower", callback_data=f"u:{user_id}:sgo:cards:{bet}:low:{base_card}"),
-            ],
-            [
-                InlineKeyboardButton("🔴 Red", callback_data=f"u:{user_id}:sgo:cards:{bet}:red:{base_card}"),
-                InlineKeyboardButton("⚫ Black", callback_data=f"u:{user_id}:sgo:cards:{bet}:black:{base_card}"),
             ],
             [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
         ])
@@ -573,6 +634,21 @@ def post_solo_keyboard(user_id: int, replay_cb: str, bet: int) -> InlineKeyboard
 
 
 def round_join_keyboard(game_type: str) -> InlineKeyboardMarkup:
+    if game_type == "rps":
+        return InlineKeyboardMarkup([[
+            InlineKeyboardButton("🪨 Rock", callback_data="rjoin:rps:rock"),
+            InlineKeyboardButton("📄 Paper", callback_data="rjoin:rps:paper"),
+            InlineKeyboardButton("✂️ Scissors", callback_data="rjoin:rps:scissors"),
+        ]])
+    if game_type == "hilo":
+        return InlineKeyboardMarkup([[
+            InlineKeyboardButton("⬆️ Higher", callback_data="rjoin:hilo:high"),
+            InlineKeyboardButton("⬇️ Lower", callback_data="rjoin:hilo:low"),
+        ]])
+    if game_type == "aviator":
+        return InlineKeyboardMarkup([[
+            InlineKeyboardButton("✈️ Join Aviator Flight", callback_data="rjoin:aviator:fly")
+        ]])
     if game_type == "flip":
         return InlineKeyboardMarkup([[
             InlineKeyboardButton("👑 Heads", callback_data="rjoin:flip:heads"),
@@ -588,17 +664,6 @@ def round_join_keyboard(game_type: str) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup([[
             InlineKeyboardButton("🎰 Enter 10s Spin", callback_data="rjoin:slots:spin")
         ]])
-    if game_type == "cards":
-        return InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("⬆️ Higher", callback_data="rjoin:cards:high"),
-                InlineKeyboardButton("⬇️ Lower", callback_data="rjoin:cards:low"),
-            ],
-            [
-                InlineKeyboardButton("🔴 Red", callback_data="rjoin:cards:red"),
-                InlineKeyboardButton("⚫ Black", callback_data="rjoin:cards:black"),
-            ],
-        ])
     if game_type == "guess":
         r1 = [InlineKeyboardButton(str(n), callback_data=f"rjoin:guess:{n}") for n in range(1, 6)]
         r2 = [InlineKeyboardButton(str(n), callback_data=f"rjoin:guess:{n}") for n in range(6, 11)]
@@ -662,6 +727,388 @@ def build_mines_keyboard(game: Dict[str, Any], reveal_all: bool = False) -> Inli
     return InlineKeyboardMarkup(rows)
 
 
+def build_ttt5_keyboard(board: List[Optional[str]], finished: bool = False) -> InlineKeyboardMarkup:
+    rows: List[List[InlineKeyboardButton]] = []
+    for r in range(5):
+        row_btns: List[InlineKeyboardButton] = []
+        for c in range(5):
+            idx = r * 5 + c
+            cell = board[idx]
+            label = cell if cell else "▪"
+            cb = "ttt5_noop" if finished else f"ttt5_cell:{idx}"
+            row_btns.append(InlineKeyboardButton(label, callback_data=cb))
+        rows.append(row_btns)
+    if finished:
+        rows.append([
+            InlineKeyboardButton("🔁 New 5x5 TicTacToe", callback_data="ttt5_start"),
+            InlineKeyboardButton("🎮 Games", callback_data="menu_home"),
+        ])
+    return InlineKeyboardMarkup(rows)
+
+
+async def run_solo_aviator(
+    context: ContextTypes.DEFAULT_TYPE,
+    chat_id: int,
+    user_id: int,
+    name: str,
+    username: Optional[str],
+    bet: int,
+) -> None:
+    if bet < 10:
+        await context.bot.send_message(chat_id, "⚠️ Minimum bet <b>10</b> coins hai.", parse_mode=ParseMode.HTML)
+        return
+    key = (chat_id, user_id)
+    if key in ACTIVE_AVIATOR_SOLO:
+        await context.bot.send_message(chat_id, "✈️ Tumhari ek Aviator flight pehle se chal rahi hai!")
+        return
+
+    db.ensure_user(user_id, name, username)
+    bal_after_bet = db.adjust_coins(user_id, -bet, chat_id=chat_id, name=name, played_delta=1)
+    if bal_after_bet is None:
+        await context.bot.send_message(chat_id, "❌ Balance kam hai! <code>/daily</code> ya <code>/refill</code> try karo.", parse_mode=ParseMode.HTML)
+        return
+    db.record_last_bet(user_id, bet)
+
+    crash_pt = generate_aviator_crash()
+    flight = {
+        "user_id": user_id,
+        "name": name,
+        "bet": bet,
+        "cur_mult": 1.0,
+        "cashed_out": False,
+        "cashout_mult": 0.0,
+        "crashed": False,
+    }
+    ACTIVE_AVIATOR_SOLO[key] = flight
+
+    msg = await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"✈️ <b>Aviator</b> · bet {bet}\n"
+            f"🛫 Altitude: <b>1.0x</b> (Max 7.0x)\n"
+            f"💰 Potential Win: <code>{bet}</code> coins"
+        ),
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton(f"💰 Cash Out ({bet})", callback_data=f"u:{user_id}:av_cashout")
+        ]]),
+    )
+
+    cur = 1.0
+    while cur < crash_pt:
+        await asyncio.sleep(1.15)
+        if flight["cashed_out"]:
+            break
+        cur = round(min(7.0, cur + 0.2), 1)
+        flight["cur_mult"] = cur
+        if cur >= crash_pt:
+            break
+        pot_win = int(bet * cur)
+        bar = "🛫" + "━" * int((cur - 1.0) * 2.5) + "✈️"
+        try:
+            await msg.edit_text(
+                f"✈️ <b>Aviator</b> · bet {bet}\n"
+                f"{bar}\n"
+                f"📈 Multiplier: <b>{cur:.1f}x</b>\n"
+                f"💰 Potential Win: <code>{pot_win}</code> coins",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(f"💰 Cash Out (+{pot_win} | {cur:.1f}x)", callback_data=f"u:{user_id}:av_cashout")
+                ]]),
+            )
+        except TelegramError:
+            pass
+
+    ACTIVE_AVIATOR_SOLO.pop(key, None)
+
+    if flight["cashed_out"]:
+        c_mult = flight["cashout_mult"]
+        payout = int(bet * c_mult)
+        db.record_outcome(user_id, True, payout=payout, chat_id=chat_id, name=name)
+        final_bal = (db.get_user(user_id) or {}).get("coins", bal_after_bet + payout)
+        await msg.edit_text(
+            f"✈️ <b>Aviator</b> · bet {bet}\n"
+            f"✅ <b>Cashed Out at {c_mult:.1f}x!</b> (Flew away at {crash_pt:.1f}x)\n"
+            f"🎉 <b>You won +{payout} coins!</b>\n"
+            f"🪙 <b>Balance:</b> <code>{final_bal}</code>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=post_solo_keyboard(user_id, f"replay:aviator:{bet}:fly", bet),
+        )
+    else:
+        flight["crashed"] = True
+        db.record_outcome(user_id, False, chat_id=chat_id, name=name)
+        await msg.edit_text(
+            f"✈️ <b>Aviator</b> · bet {bet}\n"
+            f"💥 <b>Flew Away at {crash_pt:.1f}x!</b>\n"
+            f"❌ <b>You lost {bet} coins.</b>\n"
+            f"🪙 <b>Balance:</b> <code>{bal_after_bet}</code>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=post_solo_keyboard(user_id, f"replay:aviator:{bet}:fly", bet),
+        )
+
+
+async def run_group_aviator_flight(
+    context: ContextTypes.DEFAULT_TYPE, chat_id: int, entries: Dict[int, Dict[str, Any]]
+) -> None:
+    crash_pt = generate_aviator_crash()
+    flight_state: Dict[str, Any] = {
+        "entries": entries,  # uid -> {"name": str, "bet": int, "cashed_mult": Optional[float]}
+        "cur_mult": 1.0,
+        "active": True,
+    }
+    for pdata in entries.values():
+        pdata["cashed_mult"] = None
+
+    ACTIVE_AVIATOR_GROUP[chat_id] = flight_state
+
+    msg = await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"✈️ <b>Aviator Live Flight!</b> (Max 7.0x)\n"
+            f"🛫 Altitude: <b>1.0x</b>\n"
+            f"👇 Apne luck ke hisaab se kabhi bhi <b>Cash Out</b> dabao!"
+        ),
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("💰 Cash Out Now (1.0x)", callback_data="gav_cashout")
+        ]]),
+    )
+
+    cur = 1.0
+    while cur < crash_pt:
+        await asyncio.sleep(1.15)
+        # Stop early if all players already cashed out
+        if all(p.get("cashed_mult") is not None for p in entries.values()):
+            break
+        cur = round(min(7.0, cur + 0.2), 1)
+        flight_state["cur_mult"] = cur
+        if cur >= crash_pt:
+            break
+
+        cashed_names = [
+            f"✅ {p['name']} ({p['cashed_mult']:.1f}x)"
+            for p in entries.values()
+            if p.get("cashed_mult") is not None
+        ]
+        cashed_line = ("\n" + " | ".join(cashed_names)) if cashed_names else ""
+        bar = "🛫" + "━" * int((cur - 1.0) * 2.5) + "✈️"
+        try:
+            await msg.edit_text(
+                f"✈️ <b>Aviator Live Flight!</b>\n"
+                f"{bar}\n"
+                f"📈 Current Multiplier: <b>{cur:.1f}x</b>{cashed_line}",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(f"💰 Cash Out Now ({cur:.1f}x)", callback_data="gav_cashout")
+                ]]),
+            )
+        except TelegramError:
+            pass
+
+    flight_state["active"] = False
+    ACTIVE_AVIATOR_GROUP.pop(chat_id, None)
+
+    summary_lines = [
+        f"💥 <b>Aviator Flew Away at {crash_pt:.1f}x!</b>\n",
+        "📋 <b>Players Result List:</b>",
+    ]
+    for idx_p, (uid, pdata) in enumerate(entries.items(), 1):
+        pname = pdata["name"]
+        bet = pdata["bet"]
+        cm = pdata.get("cashed_mult")
+        if cm is not None:
+            payout = int(bet * cm)
+            db.record_outcome(uid, True, payout=payout, chat_id=chat_id, name=pname)
+            new_b = (db.get_user(uid) or {}).get("coins", 0)
+            summary_lines.append(
+                f"{idx_p}. <b>{pname}</b> [Out @{cm:.1f}x] — ✅ Won <code>+{payout}</code> (Bet: <code>{bet}</code>) | Bal: <code>{new_b}</code>"
+            )
+        else:
+            db.record_outcome(uid, False, chat_id=chat_id, name=pname)
+            new_b = (db.get_user(uid) or {}).get("coins", 0)
+            summary_lines.append(
+                f"{idx_p}. <b>{pname}</b> [Crashed] — ❌ Lost <code>-{bet}</code> | Bal: <code>{new_b}</code>"
+            )
+
+    try:
+        await msg.edit_text(
+            "\n".join(summary_lines),
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("🔁 New Aviator Round", callback_data="round_start:aviator"),
+                    InlineKeyboardButton("🎮 Games", callback_data="menu_home"),
+                ],
+                [InlineKeyboardButton("❌ Close", callback_data="msg_close")],
+            ]),
+        )
+    except TelegramError:
+        pass
+    asyncio.create_task(schedule_delete_messages(context, chat_id, [msg.message_id], AUTO_DELETE_RESULT_SEC))
+
+
+async def run_ttt5_match(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
+    if chat_id in ACTIVE_TTT5:
+        return
+
+    match: Dict[str, Any] = {
+        "phase": "join",
+        "players": {},
+        "order": [],
+        "turn_idx": 0,
+        "board": [None] * 25,
+        "end_join_ts": time.time() + TTT_JOIN_SECONDS,
+        "msg_id": None,
+    }
+    ACTIVE_TTT5[chat_id] = match
+
+    join_msg = await context.bot.send_message(
+        chat_id=chat_id,
+        text=(
+            f"🎯 <b>5x5 Tic Tac Toe</b>\n"
+            f"⏳ <b>{TTT_JOIN_SECONDS}s</b> mein join karo! Jiska sabse zyada line/score banega, wahi jeetega.\n"
+            f"👥 Joined: <code>0</code>"
+        ),
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("🎟 Join (100 coins)", callback_data="ttt5_join:100"),
+            InlineKeyboardButton("🎟 Join (250 coins)", callback_data="ttt5_join:250"),
+        ]]),
+    )
+    match["msg_id"] = join_msg.message_id
+
+    for rem in range(TTT_JOIN_SECONDS - 1, 0, -1):
+        await asyncio.sleep(1)
+        if chat_id not in ACTIVE_TTT5 or match["phase"] != "join":
+            return
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=join_msg.message_id,
+                text=(
+                    f"🎯 <b>5x5 Tic Tac Toe</b>\n"
+                    f"⏳ <b>{rem}s</b> baaki — jaldi join karo!\n"
+                    f"👥 Joined: <code>{len(match['order'])}</code>"
+                ),
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🎟 Join (100 coins)", callback_data="ttt5_join:100"),
+                    InlineKeyboardButton("🎟 Join (250 coins)", callback_data="ttt5_join:250"),
+                ]]),
+            )
+        except TelegramError:
+            pass
+
+    await asyncio.sleep(1)
+    if chat_id not in ACTIVE_TTT5:
+        return
+
+    order: List[int] = match["order"]
+    if len(order) < 2:
+        for uid in order:
+            p = match["players"][uid]
+            db.adjust_coins(uid, p["bet"], chat_id=chat_id, name=p["name"])
+        ACTIVE_TTT5.pop(chat_id, None)
+        await safe_delete_message(context, chat_id, join_msg.message_id)
+        m_low = await context.bot.send_message(
+            chat_id=chat_id,
+            text="⚠️ 5x5 Tic Tac Toe ke liye kam se kam 2 players chahiye the. Bet wapas kar di gayi hai!",
+            parse_mode=ParseMode.HTML,
+        )
+        asyncio.create_task(schedule_delete_messages(context, chat_id, [m_low.message_id], 12))
+        return
+
+    match["phase"] = "play"
+    while chat_id in ACTIVE_TTT5:
+        board: List[Optional[str]] = match["board"]
+        if all(cell is not None for cell in board):
+            break
+
+        cur_uid = order[match["turn_idx"] % len(order)]
+        cur_p = match["players"][cur_uid]
+        scores_preview = " | ".join(
+            f"{match['players'][u]['mark']} <b>{match['players'][u]['name']}</b>: <code>{count_ttt5_lines(board, match['players'][u]['mark'])}</code>"
+            for u in order
+        )
+
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=join_msg.message_id,
+                text=(
+                    f"🎯 <b>5x5 Tic Tac Toe</b> (Zyada lines = Win!)\n"
+                    f"{scores_preview}\n"
+                    f"👉 Turn: {cur_p['mark']} <b>{cur_p['name']}</b> ({TTT_TURN_SECONDS}s)"
+                ),
+                parse_mode=ParseMode.HTML,
+                reply_markup=build_ttt5_keyboard(board, finished=False),
+            )
+        except TelegramError:
+            pass
+
+        moved = False
+        for _ in range(TTT_TURN_SECONDS * 2):
+            await asyncio.sleep(0.5)
+            if chat_id not in ACTIVE_TTT5:
+                return
+            if match.get("last_move_turn") == match["turn_idx"]:
+                moved = True
+                break
+
+        if not moved:
+            open_cells = [i for i, v in enumerate(board) if v is None]
+            if open_cells:
+                board[random.choice(open_cells)] = cur_p["mark"]
+            match["turn_idx"] += 1
+
+    finished_match = ACTIVE_TTT5.pop(chat_id, None)
+    if not finished_match:
+        return
+
+    final_board = finished_match["board"]
+    ranked = []
+    for uid in order:
+        p = finished_match["players"][uid]
+        pts = count_ttt5_lines(final_board, p["mark"])
+        ranked.append((pts, uid, p))
+    ranked.sort(key=lambda x: x[0], reverse=True)
+
+    total_pot = sum(finished_match["players"][u]["bet"] for u in order)
+    top_pts = ranked[0][0]
+    winners = [item for item in ranked if item[0] == top_pts]
+
+    lines = [
+        "🏁 <b>5x5 Tic Tac Toe — Final Result</b>\n",
+        "📊 <b>Scores (Lines Formed):</b>",
+    ]
+    for rank_i, (pts, uid, p) in enumerate(ranked, 1):
+        lines.append(f"{rank_i}. {p['mark']} <b>{p['name']}</b> — <code>{pts}</code> lines")
+
+    if len(winners) == 1:
+        _, win_uid, win_p = winners[0]
+        db.record_outcome(win_uid, True, payout=total_pot, chat_id=chat_id, name=win_p["name"])
+        for _, lose_uid, lose_p in ranked[1:]:
+            db.record_outcome(lose_uid, False, chat_id=chat_id, name=lose_p["name"])
+        lines.append(f"\n🏆 Winner: {win_p['mark']} <b>{win_p['name']}</b> won pot <code>+{total_pot}</code> coins!")
+    else:
+        share = max(1, total_pot // len(winners))
+        for _, w_uid, w_p in winners:
+            db.adjust_coins(w_uid, share, chat_id=chat_id, name=w_p["name"], won_delta=1)
+        lines.append(f"\n🤝 Tie! Top {len(winners)} players shared <code>{share}</code> coins each.")
+
+    try:
+        await context.bot.edit_message_text(
+            chat_id=chat_id,
+            message_id=join_msg.message_id,
+            text="\n".join(lines),
+            parse_mode=ParseMode.HTML,
+            reply_markup=build_ttt5_keyboard(final_board, finished=True),
+        )
+    except TelegramError:
+        pass
+    asyncio.create_task(schedule_delete_messages(context, chat_id, [join_msg.message_id], AUTO_DELETE_RESULT_SEC))
+
+
 async def resolve_solo_game(
     context: ContextTypes.DEFAULT_TYPE,
     chat_id: int,
@@ -673,6 +1120,10 @@ async def resolve_solo_game(
     choice: str,
     base_card: Optional[str] = None,
 ) -> None:
+    if game_type == "aviator":
+        await run_solo_aviator(context, chat_id, user_id, name, username, bet)
+        return
+
     if bet < 10:
         await context.bot.send_message(chat_id, "⚠️ Minimum bet <b>10</b> coins hai.", parse_mode=ParseMode.HTML)
         return
@@ -690,7 +1141,45 @@ async def resolve_solo_game(
     reply_to_id: Optional[int] = None
     replay_cb = f"replay:{game_type}:{bet}:{choice}"
 
-    if game_type == "flip":
+    if game_type == "rps":
+        bot_pick = random.choice(["rock", "paper", "scissors"])
+        beats = {"rock": "scissors", "paper": "rock", "scissors": "paper"}
+        if choice == bot_pick:
+            won = True
+            payout = bet
+            tag = "DRAW (Refund)"
+        elif beats[choice] == bot_pick:
+            won = True
+            payout = int(bet * 1.95)
+            tag = "WIN 1.95x"
+        else:
+            won = False
+            payout = 0
+            tag = "LOSS"
+        headline = f"✊ <b>R-P-S</b> · bet {bet}"
+        detail_line = f"You: <b>{choice.upper()}</b> | Bot: <b>{bot_pick.upper()}</b> [{tag}]"
+
+    elif game_type == "hilo":
+        b_card = base_card if (base_card and base_card != "none") else f"{CARD_RANKS[random.randint(0, len(CARD_RANKS)-2)]}{random.choice(CARD_SUITS)}"
+        b_idx = CARD_RANKS.index(b_card[:-1])
+        n_idx = random.randint(0, len(CARD_RANKS) - 1)
+        n_card = f"{CARD_RANKS[n_idx]}{random.choice(CARD_SUITS)}"
+        if n_idx == b_idx:
+            won = True
+            payout = bet
+            tag = "PUSH (Refund)"
+        elif (choice == "high" and n_idx > b_idx) or (choice == "low" and n_idx < b_idx):
+            won = True
+            payout = int(bet * 1.9)
+            tag = "WIN 1.9x"
+        else:
+            won = False
+            payout = 0
+            tag = "LOSS"
+        headline = f"🔼 <b>Hi-Lo ({choice.upper()})</b> · bet {bet}"
+        detail_line = f"Card: <code>{b_card}</code> ➡️ <b>{n_card}</b> [{tag}]"
+
+    elif game_type == "flip":
         outcome = random.choice(["heads", "tails"])
         won = (choice == outcome)
         payout = bet * 2 if won else 0
@@ -727,25 +1216,6 @@ async def resolve_solo_game(
         payout = int(bet * mult) if won else 0
         headline = f"🎰 <b>Slots</b> · bet {bet}"
         detail_line = f"Spin Value: <b>{val}</b> ({mult}x)"
-
-    elif game_type == "cards":
-        b_card = base_card if (base_card and base_card != "none") else f"{CARD_RANKS[random.randint(0, len(CARD_RANKS)-2)]}{random.choice(CARD_SUITS)}"
-        b_idx = CARD_RANKS.index(b_card[:-1])
-        n_idx = random.randint(0, len(CARD_RANKS) - 1)
-        n_suit = random.choice(CARD_SUITS)
-        n_card = f"{CARD_RANKS[n_idx]}{n_suit}"
-        is_red = n_suit in ("♥", "♦")
-        if choice == "high":
-            won = (n_idx > b_idx)
-        elif choice == "low":
-            won = (n_idx < b_idx)
-        elif choice == "red":
-            won = is_red
-        else:
-            won = (not is_red)
-        payout = int(bet * 1.9) if won else 0
-        headline = f"🃏 <b>Cards ({choice.upper()})</b> · bet {bet}"
-        detail_line = f"Card: <code>{b_card}</code> ➡️ <b>{n_card}</b>"
 
     elif game_type == "guess":
         secret_num = random.randint(1, 10)
@@ -816,12 +1286,16 @@ async def resolve_solo_game(
 async def run_ten_sec_round(context: ContextTypes.DEFAULT_TYPE, chat_id: int, game_type: str) -> None:
     if chat_id in ACTIVE_ROUNDS:
         return
+    if game_type == "aviator" and chat_id in ACTIVE_AVIATOR_GROUP:
+        return
 
     title_map = {
+        "rps": "✊ <b>10s R-P-S Round</b>",
+        "hilo": "🔼 <b>10s Hi-Lo Round</b>",
+        "aviator": "✈️ <b>10s Aviator Entry</b>",
         "flip": "🪙 <b>10s Coin Flip Round</b>",
         "dice": "🎲 <b>10s Dice Round</b>",
         "slots": "🎰 <b>10s Jackpot Spin</b>",
-        "cards": "🃏 <b>10s Cards Round</b>",
         "guess": "🔢 <b>10s Number Guess (1–10)</b>",
         "color": "🎡 <b>10s Color Wheel</b>",
         "sport_basket": "🏀 <b>10s Basketball Round</b>",
@@ -830,7 +1304,7 @@ async def run_ten_sec_round(context: ContextTypes.DEFAULT_TYPE, chat_id: int, ga
         "sport_bowling": "🎳 <b>10s Bowling Round</b>",
     }
     base_card = None
-    if game_type == "cards":
+    if game_type == "hilo":
         r_idx = random.randint(0, len(CARD_RANKS) - 2)
         base_card = f"{CARD_RANKS[r_idx]}{random.choice(CARD_SUITS)}"
 
@@ -887,8 +1361,20 @@ async def run_ten_sec_round(context: ContextTypes.DEFAULT_TYPE, chat_id: int, ga
         asyncio.create_task(schedule_delete_messages(context, chat_id, [empty_msg.message_id], 15))
         return
 
+    if game_type == "aviator":
+        await run_group_aviator_flight(context, chat_id, entries)
+        return
+
     extra_delete_ids: List[int] = []
-    if game_type == "flip":
+    if game_type == "rps":
+        rps_win_map = {"rock": "scissors", "paper": "rock", "scissors": "paper"}
+        reveal_line = "✊ R-P-S Final Showdown!"
+    elif game_type == "hilo":
+        next_idx = random.randint(0, len(CARD_RANKS) - 1)
+        next_card = f"{CARD_RANKS[next_idx]}{random.choice(CARD_SUITS)}"
+        base_idx = CARD_RANKS.index(base_card[:-1]) if base_card else 6
+        reveal_line = f"🃏 Card: <code>{base_card}</code> ➡️ <b>{next_card}</b>"
+    elif game_type == "flip":
         outcome_str = random.choice(["heads", "tails"])
         reveal_line = f"🪙 Final Toss: <b>{outcome_str.upper()}</b>"
     elif game_type == "dice":
@@ -903,13 +1389,6 @@ async def run_ten_sec_round(context: ContextTypes.DEFAULT_TYPE, chat_id: int, ga
         val = s_msg.dice.value if s_msg.dice else random.randint(1, 64)
         await asyncio.sleep(2.5)
         reveal_line = f"🎰 Jackpot Value: <b>{val}</b>"
-    elif game_type == "cards":
-        next_idx = random.randint(0, len(CARD_RANKS) - 1)
-        next_suit = random.choice(CARD_SUITS)
-        next_card = f"{CARD_RANKS[next_idx]}{next_suit}"
-        base_idx = CARD_RANKS.index(base_card[:-1]) if base_card else 6
-        is_red = next_suit in ("♥", "♦")
-        reveal_line = f"🃏 Card: <code>{base_card}</code> ➡️ <b>{next_card}</b> ({'Red' if is_red else 'Black'})"
     elif game_type == "guess":
         secret_num = random.randint(1, 10)
         reveal_line = f"🔢 Secret Number: <b>{secret_num}</b>"
@@ -946,7 +1425,28 @@ async def run_ten_sec_round(context: ContextTypes.DEFAULT_TYPE, chat_id: int, ga
         payout = 0
         tag = ""
 
-        if game_type == "flip":
+        if game_type == "rps":
+            house_c = random.choice(["rock", "paper", "scissors"])
+            if choice == house_c:
+                won = True
+                payout = bet
+                tag = f" [vs {house_c}: Push]"
+            elif rps_win_map[choice] == house_c:
+                won = True
+                payout = int(bet * 1.95)
+                tag = f" [vs {house_c}: 1.95x]"
+            else:
+                tag = f" [vs {house_c}]"
+        elif game_type == "hilo":
+            if next_idx == base_idx:
+                won = True
+                payout = bet
+                tag = " [Push]"
+            elif (choice == "high" and next_idx > base_idx) or (choice == "low" and next_idx < base_idx):
+                won = True
+                payout = int(bet * 1.9)
+                tag = " [1.9x]"
+        elif game_type == "flip":
             won = (choice == outcome_str)
             payout = bet * 2 if won else 0
         elif game_type == "dice":
@@ -962,16 +1462,6 @@ async def run_ten_sec_round(context: ContextTypes.DEFAULT_TYPE, chat_id: int, ga
         elif game_type == "slots":
             won = (val >= 43 or val in (1, 22, 43, 64))
             payout = int(bet * 4.0) if val == 64 else (int(bet * 2.0) if won else 0)
-        elif game_type == "cards":
-            if choice == "high":
-                won = (next_idx > base_idx)
-            elif choice == "low":
-                won = (next_idx < base_idx)
-            elif choice == "red":
-                won = is_red
-            else:
-                won = (not is_red)
-            payout = int(bet * 1.9) if won else 0
         elif game_type == "guess":
             g_num = int(choice)
             if g_num == secret_num:
@@ -995,13 +1485,13 @@ async def run_ten_sec_round(context: ContextTypes.DEFAULT_TYPE, chat_id: int, ga
             db.record_outcome(uid, True, payout=payout, chat_id=chat_id, name=pname)
             new_b = (db.get_user(uid) or {}).get("coins", 0)
             summary_lines.append(
-                f"{idx_p}. <b>{pname}</b> [{choice}] — ✅ Won <code>+{payout}</code>{tag} (Bet: <code>{bet}</code>) | Bal: <code>{new_b}</code>"
+                f"{idx_p}. <b>{pname}</b> [{choice}]{tag} — ✅ Won <code>+{payout}</code> (Bet: <code>{bet}</code>) | Bal: <code>{new_b}</code>"
             )
         else:
             db.record_outcome(uid, False, chat_id=chat_id, name=pname)
             new_b = (db.get_user(uid) or {}).get("coins", 0)
             summary_lines.append(
-                f"{idx_p}. <b>{pname}</b> [{choice}] — ❌ Lost <code>-{bet}</code> | Bal: <code>{new_b}</code>"
+                f"{idx_p}. <b>{pname}</b> [{choice}]{tag} — ❌ Lost <code>-{bet}</code> | Bal: <code>{new_b}</code>"
             )
 
     res_msg = await context.bot.send_message(
@@ -1071,7 +1561,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if is_new and c.type != ChatType.PRIVATE:
         db.sync_group_score(c.id, u.id, u.first_name, doc["coins"])
 
-    mode_note = "⚡ <b>DM Mode:</b> Instant play (no 10s timer)!" if is_private_chat(c.id) else "⏳ <b>Group Mode:</b> 10s timer rounds + final result list!"
+    mode_note = "⚡ <b>DM Mode:</b> Instant play (no 10s timer)!" if is_private_chat(c.id) else "⏳ <b>Group Mode:</b> 10s timer rounds + live Aviator + 5x5 TicTacToe!"
     bonus_note = f"\n🎉 <b>Referral Bonus:</b> +{bonus} coins!" if (is_new and bonus > 0) else ""
     text = (
         f"🎮 <b>ARCADE HUB</b>\n"
@@ -1087,10 +1577,10 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     text = (
         "📖 <b>Arcade Guide</b>\n\n"
-        "• <b>Personal Chat (DM):</b> Bina timer ke turant khelo.\n"
-        "• <b>Group Chat:</b> 10s round mein sab entry lock karte hain; 10s baad sabka final result list aata hai.\n"
+        "• <b>Aviator:</b> 1.0x se 0.2x steps mein upar jata hai (max 7.0x) aur har baar alag random point par phat-ta hai—time par Cash Out dabao!\n"
+        "• <b>R-P-S &amp; Hi-Lo:</b> DM mein instant, group mein 10s round + final result list.\n"
+        "• <b>5x5 Tic Tac Toe:</b> 6s entry window, 5x5 grid—jiska sabse zyada line/score banega wahi jeetega.\n"
         "• <b>Mines:</b> <code>2, 4, 5, 7, 9</code> bombs chuno aur cash out karo.\n"
-        "• <b>Sports:</b> Basketball, Football, Darts, Bowling.\n"
         "• <b>Commands:</b> <code>/bal</code>, <code>/daily</code>, <code>/refill</code>, <code>/ref</code>, <code>/give</code>, <code>/gtop</code>, <code>/top</code>"
     )
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
@@ -1332,7 +1822,7 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     custom_text = " ".join(context.args).strip() if context.args else ""
     if not reply_msg and not custom_text:
         await update.message.reply_text(
-            "📣 Promotion / Broadcast ke liye kisi message par reply karke <code>/broadcast</code> likho ya <code>/broadcast &lt;msg&gt;</code> bhejo.",
+            "📣 Reply karke <code>/broadcast</code> likho ya <code>/broadcast &lt;msg&gt;</code> bhejo.",
             parse_mode=ParseMode.HTML,
         )
         return
@@ -1372,6 +1862,79 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await safe_delete_message(context, chat.id, query.message.message_id)
         return
 
+    if data == "gav_cashout":
+        g_flight = ACTIVE_AVIATOR_GROUP.get(chat.id)
+        if not g_flight or not g_flight.get("active"):
+            await query.answer("Plane pehle hi ud chuka hai!", show_alert=True)
+            return
+        entry = g_flight["entries"].get(user.id)
+        if not entry:
+            await query.answer("Tum is flight mein nahi ho!", show_alert=True)
+            return
+        if entry.get("cashed_mult") is not None:
+            await query.answer(f"Tum pehle hi {entry['cashed_mult']:.1f}x par nikal chuke ho!", show_alert=True)
+            return
+        c_mult = g_flight["cur_mult"]
+        entry["cashed_mult"] = c_mult
+        await query.answer(f"✅ Cashed out at {c_mult:.1f}x (+{int(entry['bet'] * c_mult)})!", show_alert=True)
+        return
+
+    if data == "ttt5_noop":
+        await query.answer("Match khatam ho chuka hai!")
+        return
+
+    if data == "ttt5_start":
+        if is_private_chat(chat.id):
+            await query.answer("5x5 TicTacToe group participants ke liye best hai!", show_alert=True)
+            return
+        if chat.id in ACTIVE_TTT5:
+            await query.answer("5x5 TicTacToe pehle se chal raha hai!", show_alert=True)
+            return
+        await query.answer("6s Entry Started!")
+        asyncio.create_task(run_ttt5_match(context, chat.id))
+        return
+
+    if data.startswith("ttt5_join:"):
+        bet = int(data.split(":", 1)[1])
+        m = ACTIVE_TTT5.get(chat.id)
+        if not m or m["phase"] != "join" or time.time() >= m["end_join_ts"]:
+            await query.answer("6s entry time khatam!", show_alert=True)
+            return
+        if user.id in m["players"]:
+            await query.answer("Tum pehle hi join kar chuke ho!", show_alert=True)
+            return
+        if len(m["order"]) >= len(TTT_MARKS):
+            await query.answer("Max players full!", show_alert=True)
+            return
+        bal = db.adjust_coins(user.id, -bet, chat_id=chat.id, name=user.first_name, played_delta=1)
+        if bal is None:
+            await query.answer("Coins kam hain!", show_alert=True)
+            return
+        mark = TTT_MARKS[len(m["order"])]
+        m["players"][user.id] = {"name": user.first_name, "mark": mark, "bet": bet}
+        m["order"].append(user.id)
+        await query.answer(f"Joined as {mark}!")
+        return
+
+    if data.startswith("ttt5_cell:"):
+        idx = int(data.split(":", 1)[1])
+        m = ACTIVE_TTT5.get(chat.id)
+        if not m or m["phase"] != "play":
+            await query.answer("Match active nahi hai.")
+            return
+        cur_uid = m["order"][m["turn_idx"] % len(m["order"])]
+        if user.id != cur_uid:
+            await query.answer("Abhi tumhari turn nahi hai!", show_alert=True)
+            return
+        if m["board"][idx] is not None:
+            await query.answer("Ye box pehle hi bhara hua hai!", show_alert=True)
+            return
+        m["board"][idx] = m["players"][user.id]["mark"]
+        m["last_move_turn"] = m["turn_idx"]
+        m["turn_idx"] += 1
+        await query.answer("Move placed!")
+        return
+
     if data.startswith("u:"):
         parts = data.split(":")
         owner_uid = int(parts[1])
@@ -1379,6 +1942,16 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await query.answer("🙅 Ye action sirf usi player ke liye hai!", show_alert=True)
             return
         sub = ":".join(parts[2:])
+
+        if sub == "av_cashout":
+            flight = ACTIVE_AVIATOR_SOLO.get((chat.id, user.id))
+            if not flight or flight["crashed"] or flight["cashed_out"]:
+                await query.answer("Plane ud chuka hai ya cash out ho gaya!", show_alert=True)
+                return
+            flight["cashed_out"] = True
+            flight["cashout_mult"] = flight["cur_mult"]
+            await query.answer(f"✅ Cashed out at {flight['cur_mult']:.1f}x!")
+            return
 
         msg_lock_key = (chat.id, query.message.message_id)
         if sub.startswith("sgo:") or sub.startswith("rbet:"):
@@ -1418,16 +1991,16 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 bombs = int(extra) if extra.isdigit() else 4
                 await safe_delete_message(context, chat.id, query.message.message_id)
                 await start_mines_game(chat.id, user.id, user.first_name, user.username, bet, bombs, query.message.reply_text)
-            elif g_type == "slots":
+            elif g_type in ("slots", "aviator"):
                 await safe_delete_message(context, chat.id, query.message.message_id)
-                await resolve_solo_game(context, chat.id, user.id, user.first_name, user.username, "slots", bet, "spin")
+                await resolve_solo_game(context, chat.id, user.id, user.first_name, user.username, g_type, bet, "go")
             elif g_type.startswith("sport_"):
                 await safe_delete_message(context, chat.id, query.message.message_id)
                 await resolve_solo_game(context, chat.id, user.id, user.first_name, user.username, g_type, bet, "shot")
             else:
                 b_card = "none"
                 extra_txt = ""
-                if g_type == "cards":
+                if g_type == "hilo":
                     b_card = f"{CARD_RANKS[random.randint(0, len(CARD_RANKS)-2)]}{random.choice(CARD_SUITS)}"
                     extra_txt = f"\n🃏 Base Card: <code>{b_card}</code>"
                 await query.edit_message_text(
@@ -1600,8 +2173,8 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 reply_markup=bet_keyboard(user.id, g_type, user_coins=cur_coins),
             )
         else:
-            if chat.id in ACTIVE_ROUNDS:
-                await query.answer("Is group mein 10s round pehle se chal raha hai!", show_alert=True)
+            if chat.id in ACTIVE_ROUNDS or (g_type == "aviator" and chat.id in ACTIVE_AVIATOR_GROUP):
+                await query.answer("Is group mein round pehle se chal raha hai!", show_alert=True)
                 return
             asyncio.create_task(run_ten_sec_round(context, chat.id, g_type))
         return
@@ -1617,8 +2190,8 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 reply_markup=bet_keyboard(user.id, g_type, user_coins=cur_coins),
             )
             return
-        if chat.id in ACTIVE_ROUNDS:
-            await query.answer("10s round pehle se chal raha hai!", show_alert=True)
+        if chat.id in ACTIVE_ROUNDS or (g_type == "aviator" and chat.id in ACTIVE_AVIATOR_GROUP):
+            await query.answer("Round pehle se chal raha hai!", show_alert=True)
             return
         await query.answer("10s Round Started!")
         asyncio.create_task(run_ten_sec_round(context, chat.id, g_type))
@@ -1673,7 +2246,7 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     elif data == "act_help":
         await query.answer()
         await query.message.reply_text(
-            "📖 DM mein bina timer ke khelo; group mein 10s round ke baad sabka result list aata hai.\nCommands: <code>/bal</code>, <code>/daily</code>, <code>/refill</code>, <code>/ref</code>, <code>/give</code>, <code>/gtop</code>, <code>/top</code>",
+            "📖 Aviator 1.0x se 0.2x steps mein 7.0x tak jata hai—kabhi bhi random phat sakta hai! R-P-S, Hi-Lo aur 5x5 TicTacToe bhi hub mein hain.",
             parse_mode=ParseMode.HTML,
         )
 
