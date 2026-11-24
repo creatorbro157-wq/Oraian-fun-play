@@ -10,6 +10,7 @@ from flask import Flask
 from telegram import (
     BotCommand,
     BotCommandScopeAllGroupChats,
+    BotCommandScopeAllPrivateChats,
     BotCommandScopeDefault,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -153,27 +154,22 @@ def mines_bombs_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def bet_amounts_keyboard(user_coins: int, prefix: str, extra_rows: Optional[List[List[InlineKeyboardButton]]] = None) -> InlineKeyboardMarkup:
+def bet_amounts_keyboard(
+    user_coins: int,
+    prefix: str,
+    extra_rows: Optional[List[List[InlineKeyboardButton]]] = None,
+) -> InlineKeyboardMarkup:
     half_amt = max(MIN_BET, user_coins // 2)
     max_amt = max(MIN_BET, min(user_coins, MAX_BET))
     presets = [10, 50, 100, 250, 500, 1000]
-    rows: List[List[InlineKeyboardButton]] = []
-    row1: List[InlineKeyboardButton] = []
-    for amt in presets[:3]:
-        row1.append(btn(f"{amt}", f"{prefix}:{amt}", "success"))
-    rows.append(row1)
-
-    row2: List[InlineKeyboardButton] = []
-    for amt in presets[3:]:
-        row2.append(btn(f"{amt}", f"{prefix}:{amt}", "success"))
-    rows.append(row2)
-
-    rows.append(
+    rows: List[List[InlineKeyboardButton]] = [
+        [btn(f"{amt}", f"{prefix}:{amt}", "success") for amt in presets[:3]],
+        [btn(f"{amt}", f"{prefix}:{amt}", "success") for amt in presets[3:]],
         [
             btn(f"½ ({half_amt})", f"{prefix}:{half_amt}", "primary"),
             btn(f"Max ({max_amt})", f"{prefix}:{max_amt}", "danger"),
-        ]
-    )
+        ],
+    ]
     if extra_rows:
         rows.extend(extra_rows)
     return InlineKeyboardMarkup(rows)
@@ -211,14 +207,8 @@ def game_choice_keyboard(game_key: str, round_id: str) -> InlineKeyboardMarkup:
     if game_key == "dice":
         return InlineKeyboardMarkup(
             [
-                [
-                    btn(f"🎲 {n}", f"rchoice:{round_id}:{n}", "primary")
-                    for n in (1, 2, 3)
-                ],
-                [
-                    btn(f"🎲 {n}", f"rchoice:{round_id}:{n}", "primary")
-                    for n in (4, 5, 6)
-                ],
+                [btn(f"🎲 {n}", f"rchoice:{round_id}:{n}", "primary") for n in (1, 2, 3)],
+                [btn(f"🎲 {n}", f"rchoice:{round_id}:{n}", "primary") for n in (4, 5, 6)],
             ]
         )
     if game_key == "slots":
@@ -248,7 +238,6 @@ def game_choice_keyboard(game_key: str, round_id: str) -> InlineKeyboardMarkup:
                 ]
             ]
         )
-    # sports
     return InlineKeyboardMarkup(
         [
             [
@@ -264,7 +253,7 @@ def game_choice_keyboard(game_key: str, round_id: str) -> InlineKeyboardMarkup:
 
 
 # ==============================================================================
-# STORAGE LAYER (MongoDB with safe in-memory fallback)
+# STORAGE LAYER (MongoDB optional with safe in-memory fallback)
 # ==============================================================================
 class Database:
     def __init__(self, uri: str) -> None:
@@ -294,6 +283,8 @@ class Database:
             except Exception as exc:
                 logger.warning("MongoDB unavailable, using in-memory store: %s", exc)
                 self.use_mongo = False
+        else:
+            logger.info("MONGO_URI not set; running with in-memory store.")
 
     def ensure_user(self, user_id: int, first_name: str, username: Optional[str]) -> Dict[str, Any]:
         safe_name = (first_name or "Player").strip()[:40]
@@ -393,7 +384,6 @@ class Database:
         won_delta: int = 0,
         payout_amount: int = 0,
     ) -> Optional[int]:
-        """Atomically adjusts coins; returns None if delta < 0 and balance would drop below 0."""
         user = self.get_user(user_id)
         if not user:
             return None
@@ -535,7 +525,8 @@ class Database:
                 pass
         key = (chat_id, user_id)
         entry = self.mem_gstats.setdefault(
-            key, {"chat_id": chat_id, "user_id": user_id, "name": safe_name, "net_coins": 0, "played": 0, "won": 0}
+            key,
+            {"chat_id": chat_id, "user_id": user_id, "name": safe_name, "net_coins": 0, "played": 0, "won": 0},
         )
         entry["name"] = safe_name
         entry["net_coins"] = int(entry.get("net_coins", 0)) + coins_delta
@@ -610,21 +601,10 @@ db = Database(MONGO_URI)
 # ==============================================================================
 # ACTIVE GAME STATES
 # ==============================================================================
-# Solo bet flow per (chat_id, user_id): {"mode": "mines_bet" | "aviator_solo_bet", "bombs": int}
 PENDING_SOLO_BET: Dict[Tuple[int, int], Dict[str, Any]] = {}
-
-# Mines per (chat_id, user_id) -> independent board state
 ACTIVE_MINES: Dict[Tuple[int, int], Dict[str, Any]] = {}
-
-# Group 20s rounds per chat_id
-# round_id -> {"chat_id": int, "game": str, "phase": "pick" | "bet" | "flight" | "done",
-#              "choices": {uid: {"name": str, "choice": str}},
-#              "bets": {uid: {"name": str, "choice": str, "bet": int}},
-#              "message_id": int, "created_at": float}
 ACTIVE_ROUNDS: Dict[int, Dict[str, Any]] = {}
 ROUNDS_BY_ID: Dict[str, Dict[str, Any]] = {}
-
-# 5x5 TicTacToe per chat_id -> supports 2..6 players (3-4+ smooth)
 ACTIVE_TTT5: Dict[int, Dict[str, Any]] = {}
 
 
@@ -736,7 +716,7 @@ def format_balance_card(user_id: int, name: str, username: Optional[str]) -> str
 
 
 # ==============================================================================
-# MINES GAME ENGINE (Independent per player; clean reset on restart)
+# MINES GAME ENGINE
 # ==============================================================================
 def mines_multiplier(revealed_count: int, mines_count: int) -> float:
     if revealed_count <= 0:
@@ -760,17 +740,13 @@ def build_mines_keyboard(game: Dict[str, Any], reveal_all: bool = False, finishe
         for c in range(5):
             idx = r * 5 + c
             if idx in rev_set:
-                label = "💎"
-                style = "success"
+                label, style = "💎", "success"
             elif reveal_all and idx in mines_set:
-                label = "💣"
-                style = "danger"
+                label, style = "💣", "danger"
             elif reveal_all:
-                label = "·"
-                style = None
+                label, style = "·", None
             else:
-                label = "⬜"
-                style = None
+                label, style = "⬜", None
             row_btns.append(btn(label, f"mclick:{idx}", style))
         rows.append(row_btns)
 
@@ -796,14 +772,13 @@ async def start_mines_game(
 ) -> None:
     if bombs not in MINES_BOMB_CHOICES:
         bombs = 4
-    if bet < MIN_BET:
-        await send_fn(f"⚠️ Minimum bet <b>{MIN_BET}</b> coins hai.", parse_mode=ParseMode.HTML)
+    if bet < MIN_BET or bet > MAX_BET:
+        await send_fn(f"⚠️ Bet <b>{MIN_BET}</b> se <b>{MAX_BET}</b> ke beech rakho.", parse_mode=ParseMode.HTML)
         return
 
     db.ensure_user(user_id, name, username)
     game_key = (chat_id, user_id)
 
-    # Clean any stale/old board for this user in this chat so it never gets stuck
     ACTIVE_MINES.pop(game_key, None)
     PENDING_SOLO_BET.pop(game_key, None)
 
@@ -836,7 +811,7 @@ async def start_mines_game(
 
 
 # ==============================================================================
-# 5x5 TIC TAC TOE ENGINE (Supports 2..6 players; ideal for 3-4+ players)
+# 5x5 TIC TAC TOE ENGINE (2..6 players; ideal for 3-4+ players)
 # ==============================================================================
 def build_ttt5_keyboard(game: Dict[str, Any], finished: bool = False) -> InlineKeyboardMarkup:
     board: List[Optional[str]] = game["board"]
@@ -846,12 +821,8 @@ def build_ttt5_keyboard(game: Dict[str, Any], finished: bool = False) -> InlineK
         for c in range(5):
             idx = r * 5 + c
             cell = board[idx]
-            if cell is None:
-                label = "⬜"
-                style = None
-            else:
-                label = cell
-                style = "primary"
+            label = "⬜" if cell is None else cell
+            style = None if cell is None else "primary"
             row_btns.append(btn(label, f"ttt5_move:{idx}", style))
         rows.append(row_btns)
 
@@ -863,7 +834,6 @@ def build_ttt5_keyboard(game: Dict[str, Any], finished: bool = False) -> InlineK
 
 def count_ttt5_lines(board: List[Optional[str]], mark: str) -> int:
     lines = 0
-    # Horizontal & Vertical runs of >= 3
     for r in range(5):
         for c in range(3):
             if board[r * 5 + c] == mark and board[r * 5 + c + 1] == mark and board[r * 5 + c + 2] == mark:
@@ -872,7 +842,6 @@ def count_ttt5_lines(board: List[Optional[str]], mark: str) -> int:
         for r in range(3):
             if board[r * 5 + c] == mark and board[(r + 1) * 5 + c] == mark and board[(r + 2) * 5 + c] == mark:
                 lines += 1
-    # Diagonals of length >= 3
     for r in range(3):
         for c in range(3):
             if board[r * 5 + c] == mark and board[(r + 1) * 5 + c + 1] == mark and board[(r + 2) * 5 + c + 2] == mark:
@@ -902,11 +871,7 @@ async def finish_ttt5_game(app: Application, chat_id: int, reason: str = "Board 
     entry_bet = int(game["bet"])
     total_pot = entry_bet * len(players)
 
-    scores: List[Tuple[int, Dict[str, Any]]] = []
-    for p in players:
-        pts = count_ttt5_lines(board, p["mark"])
-        scores.append((pts, p))
-
+    scores: List[Tuple[int, Dict[str, Any]]] = [(count_ttt5_lines(board, p["mark"]), p) for p in players]
     max_pts = max((s[0] for s in scores), default=0)
     winners = [p for pts, p in scores if pts == max_pts and len(players) > 0]
 
@@ -921,9 +886,7 @@ async def finish_ttt5_game(app: Application, chat_id: int, reason: str = "Board 
         for p in winners:
             uid = p["user_id"]
             new_bal = db.adjust_coins(uid, share, chat_id=chat_id, name=p["name"], won_delta=1, payout_amount=share)
-            lines_out.append(
-                f"🏆 {p['mark']} <b>{p['name']}</b> jeeta! +{share} coins (Bal: <code>{new_bal}</code>)"
-            )
+            lines_out.append(f"🏆 {p['mark']} <b>{p['name']}</b> jeeta! +{share} coins (Bal: <code>{new_bal}</code>)")
 
     lines_out.append("")
     lines_out.append("📊 <b>Lines Score:</b>")
@@ -990,7 +953,6 @@ async def ttt5_join_countdown(app: Application, chat_id: int, message_id: int) -
 
     players = game["players"]
     if len(players) < 2:
-        # Refund creator if not enough players joined
         ACTIVE_TTT5.pop(chat_id, None)
         if players:
             p0 = players[0]
@@ -1029,7 +991,7 @@ async def ttt5_join_countdown(app: Application, chat_id: int, message_id: int) -
 
 
 # ==============================================================================
-# SOLO GAMES ENGINE (Instant play in DM)
+# SOLO GAMES ENGINE
 # ==============================================================================
 async def resolve_solo_game(
     chat_id: int,
@@ -1048,10 +1010,7 @@ async def resolve_solo_game(
     db.ensure_user(user_id, name, username)
     new_bal = db.adjust_coins(user_id, -bet, chat_id=chat_id, name=name, played_delta=1)
     if new_bal is None:
-        await send_fn(
-            "❌ Balance kam hai! <code>/daily</code> ya <code>/refill</code> use karo.",
-            parse_mode=ParseMode.HTML,
-        )
+        await send_fn("❌ Balance kam hai! <code>/daily</code> ya <code>/refill</code> use karo.", parse_mode=ParseMode.HTML)
         return
 
     db.record_last_bet(user_id, bet)
@@ -1102,7 +1061,7 @@ async def resolve_solo_game(
         won = choice == pocket
         mult = {"2x": 2.0, "3x": 3.0, "5x": 5.0}.get(choice, 0.0) if won else 0.0
         outcome_text = f"{'🎉' if won else '💥'} Wheel: <b>{pocket}</b>"
-    else:  # sports
+    else:
         sport_pick = random.choice(["hoops", "goal", "target", "strike"])
         won = choice == sport_pick
         mult = 3.5 if won else 0.0
@@ -1127,6 +1086,40 @@ async def resolve_solo_game(
         f"🪙 <b>Balance:</b> <code>{final_bal}</code>",
         parse_mode=ParseMode.HTML,
     )
+
+
+async def resolve_solo_aviator(
+    chat_id: int,
+    user_id: int,
+    name: str,
+    username: Optional[str],
+    bet: int,
+    send_fn: Callable[..., Coroutine[Any, Any, Any]],
+) -> None:
+    if bet < MIN_BET or bet > MAX_BET:
+        await send_fn(f"⚠️ Bet <b>{MIN_BET}</b> se <b>{MAX_BET}</b> ke beech rakho.", parse_mode=ParseMode.HTML)
+        return
+    db.ensure_user(user_id, name, username)
+    bal = db.adjust_coins(user_id, -bet, chat_id=chat_id, name=name, played_delta=1)
+    if bal is None:
+        await send_fn("❌ Balance kam hai! <code>/daily</code> ya <code>/refill</code> chalao.", parse_mode=ParseMode.HTML)
+        return
+    db.record_last_bet(user_id, bet)
+    crash_m = round(random.uniform(1.2, 4.5), 1)
+    target_m = round(random.uniform(1.1, min(3.5, crash_m)), 1)
+    if target_m < crash_m:
+        payout = int(round(bet * target_m))
+        final_b = db.adjust_coins(user_id, payout, chat_id=chat_id, name=name, won_delta=1, payout_amount=payout)
+        await send_fn(
+            f"🚀 Cash Out at <b>{target_m:.1f}x</b> (Crash: {crash_m:.1f}x)\n"
+            f"💰 Payout: <code>{payout}</code> · Bal: <code>{final_b}</code>",
+            parse_mode=ParseMode.HTML,
+        )
+    else:
+        await send_fn(
+            f"💥 Crashed at <b>{crash_m:.1f}x</b>! Loss: <code>{bet}</code> · Bal: <code>{bal}</code>",
+            parse_mode=ParseMode.HTML,
+        )
 
 
 # ==============================================================================
@@ -1173,7 +1166,6 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
             pass
         return
 
-    # Pick crash point between 1.0x and 7.0x in 0.2x increments
     steps_total = int(round((AVIATOR_MAX_MULTIPLIER - AVIATOR_MIN_MULTIPLIER) / AVIATOR_STEP_INC))
     crash_step = random.randint(0, steps_total)
     crash_mult = round(AVIATOR_MIN_MULTIPLIER + crash_step * AVIATOR_STEP_INC, 1)
@@ -1210,7 +1202,6 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
         except (BadRequest, TelegramError):
             pass
 
-        # If everyone has already cashed out, end early smoothly
         if all(p["cashed_out"] for p in flight_state["players"].values()):
             break
 
@@ -1227,15 +1218,13 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
         "📋 <b>Final Result (Sabka Ek Saath):</b>",
     ]
     for uid, pdata in flight_state["players"].items():
+        bal = db.get_user(uid)
+        b_val = int(bal.get("coins", 0)) if bal else 0
         if pdata["cashed_out"]:
-            bal = db.get_user(uid)
-            b_val = int(bal.get("coins", 0)) if bal else 0
             summary_lines.append(
                 f"• ✅ <b>{pdata['name']}</b> — Bet <code>{pdata['bet']}</code> | Cash Out <code>{pdata['mult']:.1f}x</code> → <b>+{pdata['payout']}</b> (Bal: <code>{b_val}</code>)"
             )
         else:
-            bal = db.get_user(uid)
-            b_val = int(bal.get("coins", 0)) if bal else 0
             summary_lines.append(
                 f"• 💥 <b>{pdata['name']}</b> — Bet <code>{pdata['bet']}</code> | Crash mein reh gaya → <b>-{pdata['bet']}</b> (Bal: <code>{b_val}</code>)"
             )
@@ -1281,7 +1270,6 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
             pass
         return
 
-    # Roll round outcome once for everyone in the round
     outcome_label = ""
     winning_choices: set = set()
     mult_map: Dict[str, float] = {}
@@ -1331,7 +1319,7 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
         if pocket != "bust":
             winning_choices = {pocket}
             mult_map = {"2x": 2.0, "3x": 3.0, "5x": 5.0}
-    else:  # sports
+    else:
         sport_res = random.choice(["hoops", "goal", "target", "strike"])
         outcome_label = f"🏀 Shot Result: <b>{sport_res.upper()}</b>"
         winning_choices = {sport_res}
@@ -1573,26 +1561,21 @@ async def cmd_mines(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     u = update.effective_user
     chat_id = update.effective_chat.id
-    db.ensure_user(u.id, u.first_name, u.username)
+    user_doc = db.ensure_user(u.id, u.first_name, u.username)
     PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": "mines_bet", "bombs": 4}
     await update.message.reply_text(
-        "💣 <b>Mines</b> — Pehle mines count chuno (ya neeche se bet amount chuno; custom bet type bhi kar sakte ho):",
+        "💣 <b>Mines</b> — Bombs ya bet amount chuno (ya number type karo):",
         parse_mode=ParseMode.HTML,
         reply_markup=bet_amounts_keyboard(
-            int(db.get_user(u.id).get("coins", 0)),
+            int(user_doc.get("coins", 0)),
             "sbet:mines:4",
-            extra_rows=[
-                [
-                    btn(f"{b} 💣", f"mines_bombs:{b}", "danger")
-                    for b in MINES_BOMB_CHOICES
-                ]
-            ],
+            extra_rows=[[btn(f"{b} 💣", f"mines_bombs:{b}", "danger") for b in MINES_BOMB_CHOICES]],
         ),
     )
 
 
 # ==============================================================================
-# OWNER-ONLY COMMANDS (Hidden from / menu; checked via is_owner)
+# OWNER-ONLY COMMANDS
 # ==============================================================================
 async def cmd_mycoins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message or not is_owner(update.effective_user.id):
@@ -1718,7 +1701,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     is_private = chat.type == "private" if chat else True
     data = query.data or ""
 
-    db.ensure_user(u.id, u.first_name, u.username)
+    user_doc = db.ensure_user(u.id, u.first_name, u.username)
     if chat:
         db.record_chat(chat.id, chat.title or u.first_name, chat.type)
 
@@ -1727,304 +1710,322 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return await query.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
         return None
 
-    # Menu & Utility actions
-    if data == "back_menu":
-        await query.answer()
-        if query.message:
-            try:
-                await query.message.edit_text(
-                    f"👋 Namaste <b>{u.first_name}</b>! Mode chuno:",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=main_menu_keyboard(),
-                )
-            except (BadRequest, TelegramError):
-                pass
-        return
-
-    if data == "do_daily":
-        ok, msg = await claim_daily_logic(u.id, u.first_name, u.username)
-        await query.answer("Claimed!" if ok else "Cooldown", show_alert=not ok)
-        await reply_cb(msg)
-        return
-
-    if data == "do_refill":
-        ok, msg = await claim_refill_logic(u.id, u.first_name, u.username)
-        await query.answer("Refilled!" if ok else "Cooldown", show_alert=not ok)
-        await reply_cb(msg)
-        return
-
-    if data == "menu_bal":
-        await query.answer()
-        await reply_cb(format_balance_card(u.id, u.first_name, u.username))
-        return
-
-    if data == "menu_help":
-        await query.answer()
-        await reply_cb(help_text())
-        return
-
-    if data == "menu_top":
-        await query.answer()
-        rows = db.global_top(10)
-        medals = {0: "🥇", 1: "🥈", 2: "🥉"}
-        lines = ["🌍 <b>Global Rank Top 10</b>", ""]
-        for idx, r in enumerate(rows):
-            lines.append(f"{medals.get(idx, f'{idx + 1}.')} <b>{r.get('first_name', 'Player')}</b> — <code>{int(r.get('coins', 0))}</code> coins")
-        await reply_cb("\n".join(lines))
-        return
-
-    if data == "menu_gtop":
-        await query.answer()
-        if is_private:
-            await reply_cb("👥 Group Top ke liye kisi group mein <code>/gtop</code> chalao.")
-            return
-        rows = db.group_top(chat_id, 10)
-        medals = {0: "🥇", 1: "🥈", 2: "🥉"}
-        lines = [f"👥 <b>{chat.title or 'Group'} Top 10</b>", ""]
-        for idx, r in enumerate(rows):
-            lines.append(f"{medals.get(idx, f'{idx + 1}.')} <b>{r.get('name', 'Player')}</b> — <code>{int(r.get('net_coins', 0))}</code> net")
-        await reply_cb("\n".join(lines))
-        return
-
-    # Mines Bomb selection
-    if data == "menu_mines":
-        await query.answer()
-        PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": "mines_bet", "bombs": 4}
-        await reply_cb("💣 <b>Mines</b> — Kitne bombs chahiye?", reply_markup=mines_bombs_keyboard())
-        return
-
-    if data.startswith("mines_bombs:"):
-        await query.answer()
-        bombs = int(data.split(":", 1)[1])
-        PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": "mines_bet", "bombs": bombs}
-        user_coins = int(db.get_user(u.id).get("coins", 0))
-        await reply_cb(
-            f"💣 <b>{bombs} Mines</b> selected — Bet amount chuno (ya number type karo):",
-            reply_markup=bet_amounts_keyboard(user_coins, f"sbet:mines:{bombs}"),
-        )
-        return
-
-    # Aviator menu
-    if data == "menu_aviator":
-        await query.answer()
-        if is_private:
-            PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": "aviator_solo_bet"}
-            user_coins = int(db.get_user(u.id).get("coins", 0))
-            await reply_cb(
-                "🚀 <b>Solo Aviator</b> — Bet amount chuno (ya number type karo):",
-                reply_markup=bet_amounts_keyboard(user_coins, "sbet:aviator:0"),
-            )
-        else:
-            await start_group_round(context.application, chat_id, u.id, u.first_name, "aviator", reply_cb)
-        return
-
-    # Group Round game selection (pick_game:<game>)
-    if data.startswith("pick_game:"):
-        await query.answer()
-        game_key = data.split(":", 1)[1]
-        if is_private:
-            PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": f"solo_game:{game_key}"}
-            user_coins = int(db.get_user(u.id).get("coins", 0))
-            await reply_cb(
-                f"🎮 <b>{game_key.upper()}</b> — Bet amount chuno (ya number type karo):",
-                reply_markup=bet_amounts_keyboard(user_coins, f"sbet:{game_key}:0"),
-            )
-        else:
-            await start_group_round(context.application, chat_id, u.id, u.first_name, game_key, reply_cb)
-        return
-
-    # Solo Bet execution (sbet:<mode>:<extra>:<amount>)
-    if data.startswith("sbet:"):
-        await query.answer()
-        _, mode_key, extra_str, amt_str = data.split(":", 3)
-        amt = int(amt_str)
-        PENDING_SOLO_BET.pop((chat_id, u.id), None)
-        if mode_key == "mines":
-            await start_mines_game(chat_id, u.id, u.first_name, u.username, amt, int(extra_str), reply_cb)
-        elif mode_key == "aviator":
-            # Quick solo aviator flight
-            bal = db.adjust_coins(u.id, -amt, chat_id=chat_id, name=u.first_name, played_delta=1)
-            if bal is None:
-                await reply_cb("❌ Balance kam hai! <code>/daily</code> ya <code>/refill</code> chalao.")
-                return
-            crash_m = round(random.uniform(1.2, 4.5), 1)
-            target_m = round(random.uniform(1.1, min(3.5, crash_m)), 1)
-            if target_m < crash_m:
-                payout = int(round(amt * target_m))
-                final_b = db.adjust_coins(u.id, payout, chat_id=chat_id, name=u.first_name, won_delta=1, payout_amount=payout)
-                await reply_cb(
-                    f"🚀 Cash Out at <b>{target_m:.1f}x</b> (Crash: {crash_m:.1f}x)\n"
-                    f"💰 Payout: <code>{payout}</code> · Bal: <code>{final_b}</code>"
-                )
-            else:
-                await reply_cb(f"💥 Crashed at <b>{crash_m:.1f}x</b>! Loss: <code>{amt}</code> · Bal: <code>{bal}</code>")
-        else:
-            await reply_cb("🎮 Choice ke liye group round ya command use karo.")
-        return
-
-    # Group Round: Choice selection (rchoice:<round_id>:<choice>)
-    if data.startswith("rchoice:"):
-        _, round_id, choice = data.split(":", 2)
-        round_obj = ROUNDS_BY_ID.get(round_id)
-        if not round_obj or round_obj.get("phase") != "pick":
-            await query.answer("Round khatam ya bet stage mein hai.", show_alert=True)
-            return
-
-        round_obj["choices"][u.id] = {"name": u.first_name, "choice": choice}
-        await query.answer(f"Choice: {choice}")
-
-        user_coins = int(db.get_user(u.id).get("coins", 0))
-        bet_kb = bet_amounts_keyboard(user_coins, f"rbet:{round_id}:{choice}")
-        if query.message:
-            try:
-                await query.message.edit_text(
-                    f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)\n"
-                    f"<b>{u.first_name}</b> ne <b>{choice}</b> chuna — ab bet amount chuno:\n\n"
-                    f"{format_locked_bets_text(round_obj)}",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=bet_kb,
-                )
-            except (BadRequest, TelegramError):
-                pass
-        return
-
-    # Group Round: Lock bet (rbet:<round_id>:<choice>:<amount>)
-    if data.startswith("rbet:"):
-        _, round_id, choice, amt_str = data.split(":", 3)
-        round_obj = ROUNDS_BY_ID.get(round_id)
-        if not round_obj or round_obj.get("phase") not in ("pick", "bet"):
-            await query.answer("Round khatam ho chuka hai.", show_alert=True)
-            return
-
-        if u.id in round_obj["bets"]:
-            await query.answer("Tumhari bet pehle se lock hai!", show_alert=True)
-            return
-
-        bet_amt = int(amt_str)
-        if bet_amt < MIN_BET or bet_amt > MAX_BET:
-            await query.answer(f"Bet {MIN_BET}-{MAX_BET} rakho.", show_alert=True)
-            return
-
-        new_bal = db.adjust_coins(u.id, -bet_amt, chat_id=chat_id, name=u.first_name, played_delta=1)
-        if new_bal is None:
-            await query.answer("Coins kam hain! /refill ya /daily chalao.", show_alert=True)
-            return
-
-        db.record_last_bet(u.id, bet_amt)
-        round_obj["bets"][u.id] = {"name": u.first_name, "choice": choice, "bet": bet_amt}
-        await query.answer(f"{bet_amt} coins lock!")
-
-        # Keep the shared bet slot alive with updated locked-bets list
-        if query.message:
-            if round_obj["game"] == "aviator":
-                kb = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
-                header = f"🚀 <b>Aviator Group Round</b> ({ROUND_SECONDS}s entry)\nApni bet lock karo!"
-            else:
-                kb = game_choice_keyboard(round_obj["game"], round_id)
-                header = f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)\nBaaki members apni choice &amp; bet lock kar sakte hain:"
-
-            try:
-                await query.message.edit_text(
-                    f"{header}\n\n{format_locked_bets_text(round_obj)}",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=kb,
-                )
-            except (BadRequest, TelegramError):
-                pass
-        return
-
-    # Aviator live flight Cash Out (av_cash:<round_id>)
-    if data.startswith("av_cash:"):
-        round_id = data.split(":", 1)[1]
-        round_obj = ROUNDS_BY_ID.get(round_id)
-        flight = round_obj.get("flight") if round_obj else None
-        if not round_obj or not flight or not flight.get("active"):
-            await query.answer("Flight end ho chuki hai.", show_alert=True)
-            return
-
-        pdata = flight["players"].get(u.id)
-        if not pdata:
-            await query.answer("Is flight mein tumhari bet nahi hai.", show_alert=True)
-            return
-        if pdata["cashed_out"]:
-            await query.answer("Tum pehle hi Cash Out kar chuke ho!", show_alert=True)
-            return
-
-        mult = float(flight["mult"])
-        payout = int(round(pdata["bet"] * mult))
-        pdata["cashed_out"] = True
-        pdata["mult"] = mult
-        pdata["payout"] = payout
-        flight["cashouts"].append({"user_id": u.id, "name": u.first_name, "mult": mult, "payout": payout})
-
-        db.adjust_coins(u.id, payout, chat_id=chat_id, name=u.first_name, won_delta=1, payout_amount=payout)
-        await query.answer(f"Cash Out @ {mult:.1f}x (+{payout})!")
-
-        if query.message:
-            cashout_btn = InlineKeyboardMarkup(
-                [[btn(f"💸 Cash Out ({mult:.1f}x)", f"av_cash:{round_id}", "success")]]
-            )
-            try:
-                await query.message.edit_text(
-                    f"🚀 <b>Aviator Live:</b> <code>{mult:.1f}x</code>\n"
-                    f"⚡ Crash hone se pehle Cash Out dabao!\n\n"
-                    f"{format_aviator_cashout_feed(flight)}",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=cashout_btn,
-                )
-            except (BadRequest, TelegramError):
-                pass
-        return
-
-    # Mines board interactions
-    if data == "mnop":
-        await query.answer()
-        return
-
-    if data.startswith("mclick:"):
-        game = ACTIVE_MINES.get((chat_id, u.id))
-        if not game:
-            await query.answer("Ye Mines board expire ho chuka hai. Naya /mines chalao.", show_alert=True)
-            return
-        if game["user_id"] != u.id:
-            await query.answer("Ye board sirf iske owner ka hai!", show_alert=True)
-            return
-
-        idx = int(data.split(":", 1)[1])
-        if idx in game["revealed"]:
-            await query.answer("Ye tile pehle hi khul chuka hai.")
-            return
-
-        if idx in game["mines"]:
-            ACTIVE_MINES.pop((chat_id, u.id), None)
-            await query.answer("💥 Mine phat gaya!", show_alert=True)
+    try:
+        if data == "back_menu":
+            await query.answer()
             if query.message:
                 try:
                     await query.message.edit_text(
-                        f"💥 <b>Boom! Mine Hit</b> — <b>{u.first_name}</b>\n"
-                        f"Bet <code>{game['bet']}</code> gaya.",
+                        f"👋 Namaste <b>{u.first_name}</b>! Mode chuno:",
                         parse_mode=ParseMode.HTML,
-                        reply_markup=build_mines_keyboard(game, reveal_all=True, finished=True),
+                        reply_markup=main_menu_keyboard(),
                     )
-                    schedule_delete_messages(context.application.bot, chat_id, [query.message.message_id], AUTO_DELETE_RESULT_SEC)
                 except (BadRequest, TelegramError):
                     pass
             return
 
-        game["revealed"].append(idx)
-        mult = mines_multiplier(len(game["revealed"]), game["mines_count"])
-        payout = int(game["bet"] * mult)
-        await query.answer(f"💎 Safe! {mult}x")
+        if data == "do_daily":
+            ok, msg = await claim_daily_logic(u.id, u.first_name, u.username)
+            await query.answer("Claimed!" if ok else "Cooldown", show_alert=not ok)
+            await reply_cb(msg)
+            return
 
-        # Auto cashout if all safe tiles opened
-        safe_total = 25 - game["mines_count"]
-        if len(game["revealed"]) >= safe_total:
-            ACTIVE_MINES.pop((chat_id, u.id), None)
-            bal = db.adjust_coins(u.id, payout, chat_id=chat_id, name=u.first_name, won_delta=1, payout_amount=payout)
+        if data == "do_refill":
+            ok, msg = await claim_refill_logic(u.id, u.first_name, u.username)
+            await query.answer("Refilled!" if ok else "Cooldown", show_alert=not ok)
+            await reply_cb(msg)
+            return
+
+        if data == "menu_bal":
+            await query.answer()
+            await reply_cb(format_balance_card(u.id, u.first_name, u.username))
+            return
+
+        if data == "menu_help":
+            await query.answer()
+            await reply_cb(help_text())
+            return
+
+        if data == "menu_top":
+            await query.answer()
+            rows = db.global_top(10)
+            medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+            lines = ["🌍 <b>Global Rank Top 10</b>", ""]
+            for idx, r in enumerate(rows):
+                lines.append(f"{medals.get(idx, f'{idx + 1}.')} <b>{r.get('first_name', 'Player')}</b> — <code>{int(r.get('coins', 0))}</code> coins")
+            await reply_cb("\n".join(lines))
+            return
+
+        if data == "menu_gtop":
+            await query.answer()
+            if is_private:
+                await reply_cb("👥 Group Top ke liye kisi group mein <code>/gtop</code> chalao.")
+                return
+            rows = db.group_top(chat_id, 10)
+            medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+            lines = [f"👥 <b>{chat.title or 'Group'} Top 10</b>", ""]
+            for idx, r in enumerate(rows):
+                lines.append(f"{medals.get(idx, f'{idx + 1}.')} <b>{r.get('name', 'Player')}</b> — <code>{int(r.get('net_coins', 0))}</code> net")
+            await reply_cb("\n".join(lines))
+            return
+
+        if data == "menu_mines":
+            await query.answer()
+            PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": "mines_bet", "bombs": 4}
+            await reply_cb("💣 <b>Mines</b> — Kitne bombs chahiye?", reply_markup=mines_bombs_keyboard())
+            return
+
+        if data.startswith("mines_bombs:"):
+            await query.answer()
+            bombs = int(data.split(":", 1)[1])
+            PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": "mines_bet", "bombs": bombs}
+            await reply_cb(
+                f"💣 <b>{bombs} Mines</b> selected — Bet amount chuno (ya number type karo):",
+                reply_markup=bet_amounts_keyboard(int(user_doc.get("coins", 0)), f"sbet:mines:{bombs}"),
+            )
+            return
+
+        if data == "menu_aviator":
+            await query.answer()
+            if is_private:
+                PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": "aviator_solo_bet"}
+                await reply_cb(
+                    "🚀 <b>Solo Aviator</b> — Bet amount chuno (ya number type karo):",
+                    reply_markup=bet_amounts_keyboard(int(user_doc.get("coins", 0)), "sbet:aviator:0"),
+                )
+            else:
+                await start_group_round(context.application, chat_id, u.id, u.first_name, "aviator", reply_cb)
+            return
+
+        if data.startswith("pick_game:"):
+            await query.answer()
+            game_key = data.split(":", 1)[1]
+            if is_private:
+                PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": f"solo_game:{game_key}", "choice": None}
+                await reply_cb(
+                    f"🎮 <b>{game_key.upper()}</b> — Bet amount chuno (ya number type karo):",
+                    reply_markup=bet_amounts_keyboard(int(user_doc.get("coins", 0)), f"sbet:{game_key}:0"),
+                )
+            else:
+                await start_group_round(context.application, chat_id, u.id, u.first_name, game_key, reply_cb)
+            return
+
+        if data.startswith("sbet:"):
+            await query.answer()
+            _, mode_key, extra_str, amt_str = data.split(":", 3)
+            amt = int(amt_str)
+            pending = PENDING_SOLO_BET.pop((chat_id, u.id), {})
+            if mode_key == "mines":
+                await start_mines_game(chat_id, u.id, u.first_name, u.username, amt, int(extra_str), reply_cb)
+            elif mode_key == "aviator":
+                await resolve_solo_aviator(chat_id, u.id, u.first_name, u.username, amt, reply_cb)
+            else:
+                default_choice = pending.get("choice")
+                if not default_choice:
+                    default_map = {
+                        "rps": "rock",
+                        "hilo": "high",
+                        "flip": "heads",
+                        "dice": "6",
+                        "slots": "gem",
+                        "guess": "7",
+                        "wheel": "2x",
+                        "sports": "goal",
+                    }
+                    default_choice = default_map.get(mode_key, "heads")
+                await resolve_solo_game(chat_id, u.id, u.first_name, u.username, mode_key, default_choice, amt, reply_cb)
+            return
+
+        if data.startswith("rchoice:"):
+            _, round_id, choice = data.split(":", 2)
+            round_obj = ROUNDS_BY_ID.get(round_id)
+            if not round_obj or round_obj.get("phase") != "pick":
+                await query.answer("Round khatam ya bet stage mein hai.", show_alert=True)
+                return
+
+            round_obj["choices"][u.id] = {"name": u.first_name, "choice": choice}
+            await query.answer(f"Choice: {choice}")
+            bet_kb = bet_amounts_keyboard(int(user_doc.get("coins", 0)), f"rbet:{round_id}:{choice}")
             if query.message:
                 try:
                     await query.message.edit_text(
-                        f"🏆 <b>Board Clear!</b> <b>{u.first_name}</b> ne <code>{payout}</code> coins ({mult}x) jeete!\n"
+                        f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)\n"
+                        f"<b>{u.first_name}</b> ne <b>{choice}</b> chuna — ab bet amount chuno:\n\n"
+                        f"{format_locked_bets_text(round_obj)}",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=bet_kb,
+                    )
+                except (BadRequest, TelegramError):
+                    pass
+            return
+
+        if data.startswith("rbet:"):
+            _, round_id, choice, amt_str = data.split(":", 3)
+            round_obj = ROUNDS_BY_ID.get(round_id)
+            if not round_obj or round_obj.get("phase") not in ("pick", "bet"):
+                await query.answer("Round khatam ho chuka hai.", show_alert=True)
+                return
+
+            if u.id in round_obj["bets"]:
+                await query.answer("Tumhari bet pehle se lock hai!", show_alert=True)
+                return
+
+            bet_amt = int(amt_str)
+            if bet_amt < MIN_BET or bet_amt > MAX_BET:
+                await query.answer(f"Bet {MIN_BET}-{MAX_BET} rakho.", show_alert=True)
+                return
+
+            new_bal = db.adjust_coins(u.id, -bet_amt, chat_id=chat_id, name=u.first_name, played_delta=1)
+            if new_bal is None:
+                await query.answer("Coins kam hain! /refill ya /daily chalao.", show_alert=True)
+                return
+
+            db.record_last_bet(u.id, bet_amt)
+            round_obj["bets"][u.id] = {"name": u.first_name, "choice": choice, "bet": bet_amt}
+            await query.answer(f"{bet_amt} coins lock!")
+
+            if query.message:
+                if round_obj["game"] == "aviator":
+                    kb = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
+                    header = f"🚀 <b>Aviator Group Round</b> ({ROUND_SECONDS}s entry)\nApni bet lock karo!"
+                else:
+                    kb = game_choice_keyboard(round_obj["game"], round_id)
+                    header = f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)\nBaaki members apni choice &amp; bet lock kar sakte hain:"
+
+                try:
+                    await query.message.edit_text(
+                        f"{header}\n\n{format_locked_bets_text(round_obj)}",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=kb,
+                    )
+                except (BadRequest, TelegramError):
+                    pass
+            return
+
+        if data.startswith("av_cash:"):
+            round_id = data.split(":", 1)[1]
+            round_obj = ROUNDS_BY_ID.get(round_id)
+            flight = round_obj.get("flight") if round_obj else None
+            if not round_obj or not flight or not flight.get("active"):
+                await query.answer("Flight end ho chuki hai.", show_alert=True)
+                return
+
+            pdata = flight["players"].get(u.id)
+            if not pdata:
+                await query.answer("Is flight mein tumhari bet nahi hai.", show_alert=True)
+                return
+            if pdata["cashed_out"]:
+                await query.answer("Tum pehle hi Cash Out kar chuke ho!", show_alert=True)
+                return
+
+            mult = float(flight["mult"])
+            payout = int(round(pdata["bet"] * mult))
+            pdata["cashed_out"] = True
+            pdata["mult"] = mult
+            pdata["payout"] = payout
+            flight["cashouts"].append({"user_id": u.id, "name": u.first_name, "mult": mult, "payout": payout})
+
+            db.adjust_coins(u.id, payout, chat_id=chat_id, name=u.first_name, won_delta=1, payout_amount=payout)
+            await query.answer(f"Cash Out @ {mult:.1f}x (+{payout})!")
+
+            if query.message:
+                cashout_btn = InlineKeyboardMarkup(
+                    [[btn(f"💸 Cash Out ({mult:.1f}x)", f"av_cash:{round_id}", "success")]]
+                )
+                try:
+                    await query.message.edit_text(
+                        f"🚀 <b>Aviator Live:</b> <code>{mult:.1f}x</code>\n"
+                        f"⚡ Crash hone se pehle Cash Out dabao!\n\n"
+                        f"{format_aviator_cashout_feed(flight)}",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=cashout_btn,
+                    )
+                except (BadRequest, TelegramError):
+                    pass
+            return
+
+        if data == "mnop":
+            await query.answer()
+            return
+
+        if data.startswith("mclick:"):
+            game = ACTIVE_MINES.get((chat_id, u.id))
+            if not game:
+                await query.answer("Ye Mines board expire ho chuka hai. Naya /mines chalao.", show_alert=True)
+                return
+            if game["user_id"] != u.id:
+                await query.answer("Ye board sirf iske owner ka hai!", show_alert=True)
+                return
+
+            idx = int(data.split(":", 1)[1])
+            if idx in game["revealed"]:
+                await query.answer("Ye tile pehle hi khul chuka hai.")
+                return
+
+            if idx in game["mines"]:
+                ACTIVE_MINES.pop((chat_id, u.id), None)
+                await query.answer("💥 Mine phat gaya!", show_alert=True)
+                if query.message:
+                    try:
+                        await query.message.edit_text(
+                            f"💥 <b>Boom! Mine Hit</b> — <b>{u.first_name}</b>\n"
+                            f"Bet <code>{game['bet']}</code> gaya.",
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=build_mines_keyboard(game, reveal_all=True, finished=True),
+                        )
+                        schedule_delete_messages(context.application.bot, chat_id, [query.message.message_id], AUTO_DELETE_RESULT_SEC)
+                    except (BadRequest, TelegramError):
+                        pass
+                return
+
+            game["revealed"].append(idx)
+            mult = mines_multiplier(len(game["revealed"]), game["mines_count"])
+            payout = int(game["bet"] * mult)
+            await query.answer(f"💎 Safe! {mult}x")
+
+            safe_total = 25 - game["mines_count"]
+            if len(game["revealed"]) >= safe_total:
+                ACTIVE_MINES.pop((chat_id, u.id), None)
+                bal = db.adjust_coins(u.id, payout, chat_id=chat_id, name=u.first_name, won_delta=1, payout_amount=payout)
+                if query.message:
+                    try:
+                        await query.message.edit_text(
+                            f"🏆 <b>Board Clear!</b> <b>{u.first_name}</b> ne <code>{payout}</code> coins ({mult}x) jeete!\n"
+                            f"🪙 <b>Balance:</b> <code>{bal}</code>",
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=build_mines_keyboard(game, reveal_all=True, finished=True),
+                        )
+                        schedule_delete_messages(context.application.bot, chat_id, [query.message.message_id], AUTO_DELETE_RESULT_SEC)
+                    except (BadRequest, TelegramError):
+                        pass
+                return
+
+            if query.message:
+                try:
+                    await query.message.edit_text(
+                        f"💣 <b>Mines</b> · {game['mines_count']} mines · bet <code>{game['bet']}</code> · <b>{u.first_name}</b>\n"
+                        f"✨ Current: <code>{mult}x</code> (Payout: <code>{payout}</code>)",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=build_mines_keyboard(game, reveal_all=False, finished=False),
+                    )
+                except (BadRequest, TelegramError):
+                    pass
+            return
+
+        if data == "mcashout":
+            game = ACTIVE_MINES.get((chat_id, u.id))
+            if not game or game["user_id"] != u.id or not game["revealed"]:
+                await query.answer("Pehle kam se kam 1 safe tile kholo.", show_alert=True)
+                return
+            ACTIVE_MINES.pop((chat_id, u.id), None)
+            mult = mines_multiplier(len(game["revealed"]), game["mines_count"])
+            payout = int(game["bet"] * mult)
+            bal = db.adjust_coins(u.id, payout, chat_id=chat_id, name=u.first_name, won_delta=1, payout_amount=payout)
+            await query.answer(f"Cashed out {payout}!")
+            if query.message:
+                try:
+                    await query.message.edit_text(
+                        f"💰 <b>Cashed Out!</b> <b>{u.first_name}</b> ne <code>{mult}x</code> par <code>{payout}</code> coins nikale!\n"
                         f"🪙 <b>Balance:</b> <code>{bal}</code>",
                         parse_mode=ParseMode.HTML,
                         reply_markup=build_mines_keyboard(game, reveal_all=True, finished=True),
@@ -2034,157 +2035,124 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     pass
             return
 
-        if query.message:
-            try:
-                await query.message.edit_text(
-                    f"💣 <b>Mines</b> · {game['mines_count']} mines · bet <code>{game['bet']}</code> · <b>{u.first_name}</b>\n"
-                    f"✨ Current: <code>{mult}x</code> (Payout: <code>{payout}</code>)",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=build_mines_keyboard(game, reveal_all=False, finished=False),
-                )
-            except (BadRequest, TelegramError):
-                pass
-        return
+        if data == "start_ttt5":
+            await query.answer()
+            if is_private:
+                await reply_cb("❎ <b>5x5 Tic Tac Toe</b> group chat ke liye best hai—kisi group mein yeh button dabao.")
+                return
+            if chat_id in ACTIVE_TTT5:
+                await reply_cb("⚠️ Is group mein 5x5 Tic Tac Toe pehle se chal raha hai.")
+                return
 
-    if data == "mcashout":
-        game = ACTIVE_MINES.get((chat_id, u.id))
-        if not game or game["user_id"] != u.id or not game["revealed"]:
-            await query.answer("Pehle kam se kam 1 safe tile kholo.", show_alert=True)
-            return
-        ACTIVE_MINES.pop((chat_id, u.id), None)
-        mult = mines_multiplier(len(game["revealed"]), game["mines_count"])
-        payout = int(game["bet"] * mult)
-        bal = db.adjust_coins(u.id, payout, chat_id=chat_id, name=u.first_name, won_delta=1, payout_amount=payout)
-        await query.answer(f"Cashed out {payout}!")
-        if query.message:
-            try:
-                await query.message.edit_text(
-                    f"💰 <b>Cashed Out!</b> <b>{u.first_name}</b> ne <code>{mult}x</code> par <code>{payout}</code> coins nikale!\n"
-                    f"🪙 <b>Balance:</b> <code>{bal}</code>",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=build_mines_keyboard(game, reveal_all=True, finished=True),
-                )
-                schedule_delete_messages(context.application.bot, chat_id, [query.message.message_id], AUTO_DELETE_RESULT_SEC)
-            except (BadRequest, TelegramError):
-                pass
-        return
+            entry_bet = 100
+            bal = db.adjust_coins(u.id, -entry_bet, chat_id=chat_id, name=u.first_name, played_delta=1)
+            if bal is None:
+                await reply_cb("❌ 5x5 Tic Tac Toe start karne ke liye kam se kam <b>100</b> coins chahiye.")
+                return
 
-    # 5x5 TicTacToe start & join & move
-    if data == "start_ttt5":
-        await query.answer()
-        if is_private:
-            await reply_cb("❎ <b>5x5 Tic Tac Toe</b> group chat ke liye best hai—kisi group mein yeh button dabao.")
-            return
-        if chat_id in ACTIVE_TTT5:
-            await reply_cb("⚠️ Is group mein 5x5 Tic Tac Toe pehle se chal raha hai.")
+            game = {
+                "chat_id": chat_id,
+                "bet": entry_bet,
+                "status": "joining",
+                "board": [None] * 25,
+                "players": [{"user_id": u.id, "name": u.first_name, "mark": TTT_MARKS[0]}],
+                "turn_idx": 0,
+                "turn_num": 0,
+                "message_id": 0,
+            }
+            ACTIVE_TTT5[chat_id] = game
+            msg = await reply_cb(
+                f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{entry_bet}</code> coins\n"
+                f"{format_ttt5_roster(game)}\n"
+                f"⏳ Join karne ke liye <b>{TTT_JOIN_SECONDS}s</b> bache hain!",
+                reply_markup=build_ttt5_keyboard(game, finished=False),
+            )
+            if msg and getattr(msg, "message_id", None):
+                game["message_id"] = msg.message_id
+                asyncio.create_task(ttt5_join_countdown(context.application, chat_id, msg.message_id))
             return
 
-        entry_bet = 100
-        bal = db.adjust_coins(u.id, -entry_bet, chat_id=chat_id, name=u.first_name, played_delta=1)
-        if bal is None:
-            await reply_cb("❌ 5x5 Tic Tac Toe start karne ke liye kam se kam <b>100</b> coins chahiye.")
+        if data == "ttt5_join":
+            game = ACTIVE_TTT5.get(chat_id)
+            if not game or game.get("status") != "joining":
+                await query.answer("Join time khatam ho chuka hai.", show_alert=True)
+                return
+            if any(p["user_id"] == u.id for p in game["players"]):
+                await query.answer("Tum pehle se join kar chuke ho!", show_alert=True)
+                return
+            if len(game["players"]) >= TTT_MAX_PLAYERS:
+                await query.answer("Max players (6) full ho chuke hain.", show_alert=True)
+                return
+
+            bal = db.adjust_coins(u.id, -int(game["bet"]), chat_id=chat_id, name=u.first_name, played_delta=1)
+            if bal is None:
+                await query.answer("Coins kam hain!", show_alert=True)
+                return
+
+            mark = TTT_MARKS[len(game["players"]) % len(TTT_MARKS)]
+            game["players"].append({"user_id": u.id, "name": u.first_name, "mark": mark})
+            await query.answer(f"Joined as {mark}!")
+
+            if query.message:
+                try:
+                    await query.message.edit_text(
+                        f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{game['bet']}</code> coins\n"
+                        f"{format_ttt5_roster(game)}\n"
+                        f"⏳ Join karne ke liye <b>{TTT_JOIN_SECONDS}s</b> window chal rahi hai!",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=build_ttt5_keyboard(game, finished=False),
+                    )
+                except (BadRequest, TelegramError):
+                    pass
             return
 
-        game = {
-            "chat_id": chat_id,
-            "bet": entry_bet,
-            "status": "joining",
-            "board": [None] * 25,
-            "players": [{"user_id": u.id, "name": u.first_name, "mark": TTT_MARKS[0]}],
-            "turn_idx": 0,
-            "turn_num": 0,
-            "message_id": 0,
-        }
-        ACTIVE_TTT5[chat_id] = game
-        msg = await reply_cb(
-            f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{entry_bet}</code> coins\n"
-            f"{format_ttt5_roster(game)}\n"
-            f"⏳ Join karne ke liye <b>{TTT_JOIN_SECONDS}s</b> bache hain!",
-            reply_markup=build_ttt5_keyboard(game, finished=False),
-        )
-        if msg and getattr(msg, "message_id", None):
-            game["message_id"] = msg.message_id
-            asyncio.create_task(ttt5_join_countdown(context.application, chat_id, msg.message_id))
-        return
+        if data.startswith("ttt5_move:"):
+            game = ACTIVE_TTT5.get(chat_id)
+            if not game or game.get("status") != "active":
+                await query.answer("Match active nahi hai.", show_alert=True)
+                return
+            players = game["players"]
+            cur_p = players[game["turn_idx"] % len(players)]
+            if cur_p["user_id"] != u.id:
+                await query.answer(f"Abhi {cur_p['name']} ({cur_p['mark']}) ki turn hai!", show_alert=True)
+                return
 
-    if data == "ttt5_join":
-        game = ACTIVE_TTT5.get(chat_id)
-        if not game or game.get("status") != "joining":
-            await query.answer("Join time khatam ho chuka hai.", show_alert=True)
-            return
-        if any(p["user_id"] == u.id for p in game["players"]):
-            await query.answer("Tum pehle se join kar chuke ho!", show_alert=True)
-            return
-        if len(game["players"]) >= TTT_MAX_PLAYERS:
-            await query.answer("Max players (6) full ho chuke hain.", show_alert=True)
-            return
+            idx = int(data.split(":", 1)[1])
+            if game["board"][idx] is not None:
+                await query.answer("Ye box pehle se bhara hai!", show_alert=True)
+                return
 
-        bal = db.adjust_coins(u.id, -int(game["bet"]), chat_id=chat_id, name=u.first_name, played_delta=1)
-        if bal is None:
-            await query.answer("Coins kam hain!", show_alert=True)
-            return
+            game["board"][idx] = cur_p["mark"]
+            game["turn_idx"] = (game["turn_idx"] + 1) % len(players)
+            game["turn_num"] = int(game.get("turn_num", 1)) + 1
+            await query.answer("Move locked!")
 
-        mark = TTT_MARKS[len(game["players"]) % len(TTT_MARKS)]
-        game["players"].append({"user_id": u.id, "name": u.first_name, "mark": mark})
-        await query.answer(f"Joined as {mark}!")
+            if all(x is not None for x in game["board"]):
+                await finish_ttt5_game(context.application, chat_id, "Board Full")
+                return
 
-        if query.message:
-            try:
-                await query.message.edit_text(
-                    f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{game['bet']}</code> coins\n"
-                    f"{format_ttt5_roster(game)}\n"
-                    f"⏳ Join karne ke liye <b>{TTT_JOIN_SECONDS}s</b> window chal rahi hai!",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=build_ttt5_keyboard(game, finished=False),
-                )
-            except (BadRequest, TelegramError):
-                pass
-        return
+            next_p = players[game["turn_idx"] % len(players)]
+            if query.message:
+                try:
+                    await query.message.edit_text(
+                        f"❎ <b>5x5 Tic Tac Toe</b>\n"
+                        f"{format_ttt5_roster(game)}\n"
+                        f"🎯 Turn: {next_p['mark']} <b>{next_p['name']}</b> ({TTT_TURN_SECONDS}s)",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=build_ttt5_keyboard(game, finished=False),
+                    )
+                except (BadRequest, TelegramError):
+                    pass
 
-    if data.startswith("ttt5_move:"):
-        game = ACTIVE_TTT5.get(chat_id)
-        if not game or game.get("status") != "active":
-            await query.answer("Match active nahi hai.", show_alert=True)
-            return
-        players = game["players"]
-        cur_p = players[game["turn_idx"] % len(players)]
-        if cur_p["user_id"] != u.id:
-            await query.answer(f"Abhi {cur_p['name']} ({cur_p['mark']}) ki turn hai!", show_alert=True)
+            asyncio.create_task(ttt5_turn_watcher(context.application, chat_id, game["turn_num"]))
             return
 
-        idx = int(data.split(":", 1)[1])
-        if game["board"][idx] is not None:
-            await query.answer("Ye box pehle se bhara hai!", show_alert=True)
-            return
-
-        game["board"][idx] = cur_p["mark"]
-        game["turn_idx"] = (game["turn_idx"] + 1) % len(players)
-        game["turn_num"] = int(game.get("turn_num", 1)) + 1
-        await query.answer("Move locked!")
-
-        if all(x is not None for x in game["board"]):
-            await finish_ttt5_game(context.application, chat_id, "Board Full")
-            return
-
-        next_p = players[game["turn_idx"] % len(players)]
-        if query.message:
-            try:
-                await query.message.edit_text(
-                    f"❎ <b>5x5 Tic Tac Toe</b>\n"
-                    f"{format_ttt5_roster(game)}\n"
-                    f"🎯 Turn: {next_p['mark']} <b>{next_p['name']}</b> ({TTT_TURN_SECONDS}s)",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=build_ttt5_keyboard(game, finished=False),
-                )
-            except (BadRequest, TelegramError):
-                pass
-
-        asyncio.create_task(ttt5_turn_watcher(context.application, chat_id, game["turn_num"]))
-        return
+    except (ValueError, IndexError):
+        await query.answer("Invalid action data.", show_alert=True)
 
 
 # ==============================================================================
-# PLAIN TEXT HANDLER (Custom numeric bet input if user types an amount)
+# PLAIN TEXT HANDLER (Custom numeric bet input)
 # ==============================================================================
 async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.effective_chat or not update.message or not update.message.text:
@@ -2210,6 +2178,27 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             int(pending.get("bombs", 4)),
             update.message.reply_text,
         )
+    elif mode == "aviator_solo_bet":
+        await resolve_solo_aviator(
+            chat_id,
+            u.id,
+            u.first_name,
+            u.username,
+            amt,
+            update.message.reply_text,
+        )
+    elif mode.startswith("solo_game:"):
+        gkey = mode.split(":", 1)[1]
+        await resolve_solo_game(
+            chat_id,
+            u.id,
+            u.first_name,
+            u.username,
+            gkey,
+            pending.get("choice") or "heads",
+            amt,
+            update.message.reply_text,
+        )
 
 
 # ==============================================================================
@@ -2232,6 +2221,7 @@ MEMBER_COMMANDS = [
 async def setup_bot_commands(app: Application) -> None:
     try:
         await app.bot.set_my_commands(MEMBER_COMMANDS, scope=BotCommandScopeDefault())
+        await app.bot.set_my_commands(MEMBER_COMMANDS, scope=BotCommandScopeAllPrivateChats())
         await app.bot.set_my_commands(MEMBER_COMMANDS, scope=BotCommandScopeAllGroupChats())
         logger.info("Member bot commands configured successfully.")
     except TelegramError as exc:
@@ -2249,11 +2239,13 @@ def main() -> None:
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN environment variable is required.")
 
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     threading.Thread(target=run_health_server, daemon=True).start()
 
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
-    # Member commands
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("bal", cmd_bal))
@@ -2265,7 +2257,6 @@ def main() -> None:
     app.add_handler(CommandHandler("gtop", cmd_gtop))
     app.add_handler(CommandHandler("mines", cmd_mines))
 
-    # Owner commands (not listed in BotCommand menu; guarded by is_owner)
     app.add_handler(CommandHandler("mycoins", cmd_mycoins))
     app.add_handler(CommandHandler("setmycoins", cmd_setmycoins))
     app.add_handler(CommandHandler("addcoins", cmd_addcoins))
@@ -2273,7 +2264,6 @@ def main() -> None:
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("broadcast", cmd_broadcast))
 
-    # Callbacks & custom bet numbers
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_plain_text))
 
