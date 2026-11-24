@@ -1,1008 +1,1043 @@
-import asyncio
-import logging
-import os
-import random
-import threading
-import time
-from typing import Any, Dict, List, Optional, Tuple
+ɪᴍᴘᴏʀᴛ ᴀsʏɴᴄɪᴏ
+ɪᴍᴘᴏʀᴛ ʟᴏɢɢɪɴɢ
+ɪᴍᴘᴏʀᴛ ᴏs
+ɪᴍᴘᴏʀᴛ ʀᴀɴᴅᴏᴍ
+ɪᴍᴘᴏʀᴛ ᴛʜʀᴇᴀᴅɪɴɢ
+ɪᴍᴘᴏʀᴛ ᴛɪᴍᴇ
+ғʀᴏᴍ ᴛʏᴘɪɴɢ ɪᴍᴘᴏʀᴛ ᴀɴʏ, ᴅɪᴄᴛ, ʟɪsᴛ, ᴏᴘᴛɪᴏɴᴀʟ, ᴛᴜᴘʟᴇ
 
-from flask import Flask, jsonify
-from pymongo import MongoClient, ReturnDocument
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.constants import ChatType, ParseMode
-from telegram.error import Forbidden, RetryAfter, TelegramError, TimedOut
-from telegram.ext import (
-    Application,
-    CallbackQueryHandler,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
+ғʀᴏᴍ ғʟᴀsᴋ ɪᴍᴘᴏʀᴛ ғʟᴀsᴋ, ᴊsᴏɴɪғʏ
+ғʀᴏᴍ ᴘʏᴍᴏɴɢᴏ ɪᴍᴘᴏʀᴛ ᴍᴏɴɢᴏᴄʟɪᴇɴᴛ, ʀᴇᴛᴜʀɴᴅᴏᴄᴜᴍᴇɴᴛ
+ғʀᴏᴍ ᴛᴇʟᴇɢʀᴀᴍ ɪᴍᴘᴏʀᴛ ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ, ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅᴍᴀʀᴋᴜᴘ, ᴜᴘᴅᴀᴛᴇ
+ғʀᴏᴍ ᴛᴇʟᴇɢʀᴀᴍ.ᴄᴏɴsᴛᴀɴᴛs ɪᴍᴘᴏʀᴛ ᴄʜᴀᴛᴛʏᴘᴇ, ᴘᴀʀsᴇᴍᴏᴅᴇ
+ғʀᴏᴍ ᴛᴇʟᴇɢʀᴀᴍ.ᴇʀʀᴏʀ ɪᴍᴘᴏʀᴛ ғᴏʀʙɪᴅᴅᴇɴ, ʀᴇᴛʀʏᴀғᴛᴇʀ, ᴛᴇʟᴇɢʀᴀᴍᴇʀʀᴏʀ, ᴛɪᴍᴇᴅᴏᴜᴛ
+ғʀᴏᴍ ᴛᴇʟᴇɢʀᴀᴍ.ᴇxᴛ ɪᴍᴘᴏʀᴛ (
+    ᴀᴘᴘʟɪᴄᴀᴛɪᴏɴ,
+    ᴄᴀʟʟʙᴀᴄᴋǫᴜᴇʀʏʜᴀɴᴅʟᴇʀ,
+    ᴄᴏᴍᴍᴀɴᴅʜᴀɴᴅʟᴇʀ,
+    ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs,
+    ᴍᴇssᴀɢᴇʜᴀɴᴅʟᴇʀ,
+    ғɪʟᴛᴇʀs,
 )
 
-logging.basicConfig(
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    level=logging.INFO,
+ʟᴏɢɢɪɴɢ.ʙᴀsɪᴄᴄᴏɴғɪɢ(
+    ғᴏʀᴍᴀᴛ="%(ᴀsᴄᴛɪᴍᴇ)s | %(ʟᴇᴠᴇʟɴᴀᴍᴇ)s | %(ɴᴀᴍᴇ)s | %(ᴍᴇssᴀɢᴇ)s",
+    ʟᴇᴠᴇʟ=ʟᴏɢɢɪɴɢ.ɪɴғᴏ,
 )
-logger = logging.getLogger("GroupArcadeBot")
+ʟᴏɢɢᴇʀ = ʟᴏɢɢɪɴɢ.ɢᴇᴛʟᴏɢɢᴇʀ("ɢʀᴏᴜᴘᴀʀᴄᴀᴅᴇʙᴏᴛ")
+ʟᴏɢɢɪɴɢ.ɢᴇᴛʟᴏɢɢᴇʀ("ʜᴛᴛᴘx").sᴇᴛʟᴇᴠᴇʟ(ʟᴏɢɢɪɴɢ.ᴡᴀʀɴɪɴɢ)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-MONGO_URI = os.getenv("MONGO_URI", "").strip()
-DB_NAME = os.getenv("DB_NAME", "group_arcade_bot").strip()
-PORT = int(os.getenv("PORT", "10000"))
+ʙᴏᴛ_ᴛᴏᴋᴇɴ = ᴏs.ɢᴇᴛᴇɴᴠ("ʙᴏᴛ_ᴛᴏᴋᴇɴ", "").sᴛʀɪᴘ()
+ᴍᴏɴɢᴏ_ᴜʀɪ = ᴏs.ɢᴇᴛᴇɴᴠ("ᴍᴏɴɢᴏ_ᴜʀɪ", "").sᴛʀɪᴘ()
+ᴅʙ_ɴᴀᴍᴇ = ᴏs.ɢᴇᴛᴇɴᴠ("ᴅʙ_ɴᴀᴍᴇ", "ɢʀᴏᴜᴘ_ᴀʀᴄᴀᴅᴇ_ʙᴏᴛ").sᴛʀɪᴘ()
+ᴘᴏʀᴛ = ɪɴᴛ(ᴏs.ɢᴇᴛᴇɴᴠ("ᴘᴏʀᴛ", "𝟷𝟶𝟶𝟶𝟶"))
 
-try:
-    OWNER_ID: Optional[int] = int(os.getenv("OWNER_ID", "0").strip())
-    if OWNER_ID == 0:
-        OWNER_ID = None
-except ValueError:
-    OWNER_ID = None
+ᴛʀʏ:
+    ᴏᴡɴᴇʀ_ɪᴅ: ᴏᴘᴛɪᴏɴᴀʟ[ɪɴᴛ] = ɪɴᴛ(ᴏs.ɢᴇᴛᴇɴᴠ("ᴏᴡɴᴇʀ_ɪᴅ", "𝟶").sᴛʀɪᴘ())
+    ɪғ ᴏᴡɴᴇʀ_ɪᴅ == 𝟶:
+        ᴏᴡɴᴇʀ_ɪᴅ = ɴᴏɴᴇ
+ᴇxᴄᴇᴘᴛ ᴠᴀʟᴜᴇᴇʀʀᴏʀ:
+    ᴏᴡɴᴇʀ_ɪᴅ = ɴᴏɴᴇ
 
-DAILY_REWARD = 500
-DAILY_COOLDOWN_SEC = 24 * 3600
-REFILL_AMOUNT = 150
-REFILL_COOLDOWN_SEC = 2 * 3600
-REFERRAL_BONUS_REFERRER = 250
-REFERRAL_BONUS_USER = 200
-WELCOME_COINS = 250
+ᴅᴀɪʟʏ_ʀᴇᴡᴀʀᴅ = 𝟻𝟶𝟶
+ᴅᴀɪʟʏ_ᴄᴏᴏʟᴅᴏᴡɴ_sᴇᴄ = 𝟸𝟺 * 𝟹𝟼𝟶𝟶
+ʀᴇғɪʟʟ_ᴀᴍᴏᴜɴᴛ = 𝟷𝟻𝟶
+ʀᴇғɪʟʟ_ᴄᴏᴏʟᴅᴏᴡɴ_sᴇᴄ = 𝟸 * 𝟹𝟼𝟶𝟶
+ʀᴇғᴇʀʀᴀʟ_ʙᴏɴᴜs_ʀᴇғᴇʀʀᴇʀ = 𝟸𝟻𝟶
+ʀᴇғᴇʀʀᴀʟ_ʙᴏɴᴜs_ᴜsᴇʀ = 𝟸𝟶𝟶
+ᴡᴇʟᴄᴏᴍᴇ_ᴄᴏɪɴs = 𝟸𝟻𝟶
 
-BET_OPTIONS = [10, 50, 100, 250, 500, 1000]
+ʙᴇᴛ_ᴏᴘᴛɪᴏɴs = [𝟷𝟶, 𝟻𝟶, 𝟷𝟶𝟶, 𝟸𝟻𝟶, 𝟻𝟶𝟶, 𝟷𝟶𝟶𝟶]
 
-DAILY_DIALOGUES = [
-    "Lo bhai rozana ka chanda! +{amt} coins aa gaye—udaao mat, dhang se khelo.",
-    "Subah-shaam ka kharcha paani set! +{amt} coins jeb mein daal liye hain.",
-    "Daily dose aa gayi bhai! +{amt} coins ke saath leaderboard hilane ka time aa gaya.",
+ᴅᴀɪʟʏ_ᴅɪᴀʟᴏɢᴜᴇs = [
+    "ʟᴏ ʙʜᴀɪ ʀᴏᴢᴀɴᴀ ᴋᴀ ᴄʜᴀɴᴅᴀ! +{ᴀᴍᴛ} ᴄᴏɪɴs ᴀᴀ ɢᴀʏᴇ—ᴜᴅᴀᴀᴏ ᴍᴀᴛ, ᴅʜᴀɴɢ sᴇ ᴋʜᴇʟᴏ.",
+    "sᴜʙᴀʜ-sʜᴀᴀᴍ ᴋᴀ ᴋʜᴀʀᴄʜᴀ ᴘᴀᴀɴɪ sᴇᴛ! +{ᴀᴍᴛ} ᴄᴏɪɴs ᴊᴇʙ ᴍᴇɪɴ ᴅᴀᴀʟ ʟɪʏᴇ ʜᴀɪɴ.",
+    "ᴅᴀɪʟʏ ᴅᴏsᴇ ᴀᴀ ɢᴀʏɪ ʙʜᴀɪ! +{ᴀᴍᴛ} ᴄᴏɪɴs ᴋᴇ sᴀᴀᴛʜ ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ ʜɪʟᴀɴᴇ ᴋᴀ ᴛɪᴍᴇ ᴀᴀ ɢᴀʏᴀ.",
 ]
 
-REFILL_DIALOGUES = [
-    "Haaye re kismat! Pocket ekdum khali ho gayi. Ye lo +{amt} coins ki rescue bheekh—ab phir try kar le!",
-    "Kangal mode activated tha kya? +{amt} coins de diye hain, is baar samajh ke khelna!",
-    "Zero balance dekh kar daya aa gayi! +{amt} coins lo aur wapas line mein aao.",
+ʀᴇғɪʟʟ_ᴅɪᴀʟᴏɢᴜᴇs = [
+    "ʜᴀᴀʏᴇ ʀᴇ ᴋɪsᴍᴀᴛ! ᴘᴏᴄᴋᴇᴛ ᴇᴋᴅᴜᴍ ᴋʜᴀʟɪ ʜᴏ ɢᴀʏɪ. ʏᴇ ʟᴏ +{ᴀᴍᴛ} ᴄᴏɪɴs ᴋɪ ʀᴇsᴄᴜᴇ ʙʜᴇᴇᴋʜ—ᴀʙ ᴘʜɪʀ ᴛʀʏ ᴋᴀʀ ʟᴇ!",
+    "ᴋᴀɴɢᴀʟ ᴍᴏᴅᴇ ᴀᴄᴛɪᴠᴀᴛᴇᴅ ᴛʜᴀ ᴋʏᴀ? +{ᴀᴍᴛ} ᴄᴏɪɴs ᴅᴇ ᴅɪʏᴇ ʜᴀɪɴ, ɪs ʙᴀᴀʀ sᴀᴍᴀᴊʜ ᴋᴇ ᴋʜᴇʟɴᴀ!",
+    "ᴢᴇʀᴏ ʙᴀʟᴀɴᴄᴇ ᴅᴇᴋʜ ᴋᴀʀ ᴅᴀʏᴀ ᴀᴀ ɢᴀʏɪ! +{ᴀᴍᴛ} ᴄᴏɪɴs ʟᴏ ᴀᴜʀ ᴡᴀᴘᴀs ʟɪɴᴇ ᴍᴇɪɴ ᴀᴀᴏ.",
 ]
 
-MINES_WIN_DIALOGUES = [
-    "Cash Out maara bhai ne! Jahan darr wahan bachat—+{payout} coins (Profit: +{profit}) account mein!",
-    "Kya timing hai boss! Bomb phatne se pehle maal utha liya—+{payout} coins jeet gaye!",
-    "Smart khel gaya bhai! +{payout} coins ke saath group walon ko jalane ka mauka mil gaya.",
+ᴍɪɴᴇs_ᴡɪɴ_ᴅɪᴀʟᴏɢᴜᴇs = [
+    "ᴄᴀsʜ ᴏᴜᴛ ᴍᴀᴀʀᴀ ʙʜᴀɪ ɴᴇ! ᴊᴀʜᴀɴ ᴅᴀʀʀ ᴡᴀʜᴀɴ ʙᴀᴄʜᴀᴛ—+{ᴘᴀʏᴏᴜᴛ} ᴄᴏɪɴs (ᴘʀᴏғɪᴛ: +{ᴘʀᴏғɪᴛ}) ᴀᴄᴄᴏᴜɴᴛ ᴍᴇɪɴ!",
+    "ᴋʏᴀ ᴛɪᴍɪɴɢ ʜᴀɪ ʙᴏss! ʙᴏᴍʙ ᴘʜᴀᴛɴᴇ sᴇ ᴘᴇʜʟᴇ ᴍᴀᴀʟ ᴜᴛʜᴀ ʟɪʏᴀ—+{ᴘᴀʏᴏᴜᴛ} ᴄᴏɪɴs ᴊᴇᴇᴛ ɢᴀʏᴇ!",
+    "sᴍᴀʀᴛ ᴋʜᴇʟ ɢᴀʏᴀ ʙʜᴀɪ! +{ᴘᴀʏᴏᴜᴛ} ᴄᴏɪɴs ᴋᴇ sᴀᴀᴛʜ ɢʀᴏᴜᴘ ᴡᴀʟᴏɴ ᴋᴏ ᴊᴀʟᴀɴᴇ ᴋᴀ ᴍᴀᴜᴋᴀ ᴍɪʟ ɢᴀʏᴀ.",
 ]
 
-MINES_LOSS_DIALOGUES = [
-    "Booooom!! 💥 Diamond samajh kar bomb daba diya. {bet} coins hawa mein ud gaye!",
-    "Arre bhai! Ek step aur bachna tha bas—bomb ne poora hisaab barabar kar diya (-{bet} coins)!",
-    "Kismat ne dhokha de diya! {bet} coins ka blast ho gaya, agla round phir try kar.",
+ᴍɪɴᴇs_ʟᴏss_ᴅɪᴀʟᴏɢᴜᴇs = [
+    "ʙᴏᴏᴏᴏᴏᴍ!! 💥 ᴅɪᴀᴍᴏɴᴅ sᴀᴍᴀᴊʜ ᴋᴀʀ ʙᴏᴍʙ ᴅᴀʙᴀ ᴅɪʏᴀ. {ʙᴇᴛ} ᴄᴏɪɴs ʜᴀᴡᴀ ᴍᴇɪɴ ᴜᴅ ɢᴀʏᴇ!",
+    "ᴀʀʀᴇ ʙʜᴀɪ! ᴇᴋ sᴛᴇᴘ ᴀᴜʀ ʙᴀᴄʜɴᴀ ᴛʜᴀ ʙᴀs—ʙᴏᴍʙ ɴᴇ ᴘᴏᴏʀᴀ ʜɪsᴀᴀʙ ʙᴀʀᴀʙᴀʀ ᴋᴀʀ ᴅɪʏᴀ (-{ʙᴇᴛ} ᴄᴏɪɴs)!",
+    "ᴋɪsᴍᴀᴛ ɴᴇ ᴅʜᴏᴋʜᴀ ᴅᴇ ᴅɪʏᴀ! {ʙᴇᴛ} ᴄᴏɪɴs ᴋᴀ ʙʟᴀsᴛ ʜᴏ ɢᴀʏᴀ, ᴀɢʟᴀ ʀᴏᴜɴᴅ ᴘʜɪʀ ᴛʀʏ ᴋᴀʀ.",
 ]
 
-COIN_WIN_DIALOGUES = [
-    "Sikka kya uchhla, kismat bhi chamak gayi! +{payout} coins jeet gaye!",
-    "Akele hi maidaan maar liya bhai ne! +{payout} coins account mein aa gaye.",
-    "Sahi call liya boss! +{payout} coins jeb mein.",
+ᴄᴏɪɴ_ᴡɪɴ_ᴅɪᴀʟᴏɢᴜᴇs = [
+    "sɪᴋᴋᴀ ᴋʏᴀ ᴜᴄʜʜʟᴀ, ᴋɪsᴍᴀᴛ ʙʜɪ ᴄʜᴀᴍᴀᴋ ɢᴀʏɪ! +{ᴘᴀʏᴏᴜᴛ} ᴄᴏɪɴs ᴊᴇᴇᴛ ɢᴀʏᴇ!",
+    "ᴀᴋᴇʟᴇ ʜɪ ᴍᴀɪᴅᴀᴀɴ ᴍᴀᴀʀ ʟɪʏᴀ ʙʜᴀɪ ɴᴇ! +{ᴘᴀʏᴏᴜᴛ} ᴄᴏɪɴs ᴀᴄᴄᴏᴜɴᴛ ᴍᴇɪɴ ᴀᴀ ɢᴀʏᴇ.",
+    "sᴀʜɪ ᴄᴀʟʟ ʟɪʏᴀ ʙᴏss! +{ᴘᴀʏᴏᴜᴛ} ᴄᴏɪɴs ᴊᴇʙ ᴍᴇɪɴ.",
 ]
 
-COIN_LOSS_DIALOGUES = [
-    "Ulta pad gaya sikka! {bet} coins gaye—kismat ko dosh de sakte ho.",
-    "Akele khelne nikle the, kismat ne saath nahi diya—{bet} coins gaya!",
-    "Is baar toss ne bewafai kar di! {bet} coins loss.",
+ᴄᴏɪɴ_ʟᴏss_ᴅɪᴀʟᴏɢᴜᴇs = [
+    "ᴜʟᴛᴀ ᴘᴀᴅ ɢᴀʏᴀ sɪᴋᴋᴀ! {ʙᴇᴛ} ᴄᴏɪɴs ɢᴀʏᴇ—ᴋɪsᴍᴀᴛ ᴋᴏ ᴅᴏsʜ ᴅᴇ sᴀᴋᴛᴇ ʜᴏ.",
+    "ᴀᴋᴇʟᴇ ᴋʜᴇʟɴᴇ ɴɪᴋʟᴇ ᴛʜᴇ, ᴋɪsᴍᴀᴛ ɴᴇ sᴀᴀᴛʜ ɴᴀʜɪ ᴅɪʏᴀ—{ʙᴇᴛ} ᴄᴏɪɴs ɢᴀʏᴀ!",
+    "ɪs ʙᴀᴀʀ ᴛᴏss ɴᴇ ʙᴇᴡᴀғᴀɪ ᴋᴀʀ ᴅɪ! {ʙᴇᴛ} ᴄᴏɪɴs ʟᴏss.",
 ]
 
-EMOJI_WIN_DIALOGUES = [
-    "Kya baat hai! Animation ne saath diya aur +{payout} coins baras gaye!",
-    "Ekdum nishane par! +{payout} coins ka dhamaka ho gaya.",
-    "Lucky roll/spin! +{payout} coins jeet kar score upar le aaye.",
+ᴇᴍᴏᴊɪ_ᴡɪɴ_ᴅɪᴀʟᴏɢᴜᴇs = [
+    "ᴋʏᴀ ʙᴀᴀᴛ ʜᴀɪ! ᴀɴɪᴍᴀᴛɪᴏɴ ɴᴇ sᴀᴀᴛʜ ᴅɪʏᴀ ᴀᴜʀ +{ᴘᴀʏᴏᴜᴛ} ᴄᴏɪɴs ʙᴀʀᴀs ɢᴀʏᴇ!",
+    "ᴇᴋᴅᴜᴍ ɴɪsʜᴀɴᴇ ᴘᴀʀ! +{ᴘᴀʏᴏᴜᴛ} ᴄᴏɪɴs ᴋᴀ ᴅʜᴀᴍᴀᴋᴀ ʜᴏ ɢᴀʏᴀ.",
+    "ʟᴜᴄᴋʏ ʀᴏʟʟ/sᴘɪɴ! +{ᴘᴀʏᴏᴜᴛ} ᴄᴏɪɴs ᴊᴇᴇᴛ ᴋᴀʀ sᴄᴏʀᴇ ᴜᴘᴀʀ ʟᴇ ᴀᴀʏᴇ.",
 ]
 
-EMOJI_LOSS_DIALOGUES = [
-    "Bas thoda sa reh gaya! {bet} coins gaye—ek aur try banta hai.",
-    "Animation mast tha, par coins ud gaye ({bet} loss)! Agla mauka lo.",
-    "Kismat thodi naraz lag rahi hai! {bet} coins gaye.",
+ᴇᴍᴏᴊɪ_ʟᴏss_ᴅɪᴀʟᴏɢᴜᴇs = [
+    "ʙᴀs ᴛʜᴏᴅᴀ sᴀ ʀᴇʜ ɢᴀʏᴀ! {ʙᴇᴛ} ᴄᴏɪɴs ɢᴀʏᴇ—ᴇᴋ ᴀᴜʀ ᴛʀʏ ʙᴀɴᴛᴀ ʜᴀɪ.",
+    "ᴀɴɪᴍᴀᴛɪᴏɴ ᴍᴀsᴛ ᴛʜᴀ, ᴘᴀʀ ᴄᴏɪɴs ᴜᴅ ɢᴀʏᴇ ({ʙᴇᴛ} ʟᴏss)! ᴀɢʟᴀ ᴍᴀᴜᴋᴀ ʟᴏ.",
+    "ᴋɪsᴍᴀᴛ ᴛʜᴏᴅɪ ɴᴀʀᴀᴢ ʟᴀɢ ʀᴀʜɪ ʜᴀɪ! {ʙᴇᴛ} ᴄᴏɪɴs ɢᴀʏᴇ.",
 ]
 
 
-class DatabaseManager:
-    def __init__(self, uri: str, db_name: str) -> None:
-        self.use_mongo = False
-        self.users_col = None
-        self.groups_col = None
-        self.chats_col = None
-        self.mem_users: Dict[int, Dict[str, Any]] = {}
-        self.mem_groups: Dict[Tuple[int, int], Dict[str, Any]] = {}
-        self.mem_chats: set[int] = set()
+ᴄʟᴀss ᴅᴀᴛᴀʙᴀsᴇᴍᴀɴᴀɢᴇʀ:
+    ᴅᴇғ __ɪɴɪᴛ__(sᴇʟғ, ᴜʀɪ: sᴛʀ, ᴅʙ_ɴᴀᴍᴇ: sᴛʀ) -> ɴᴏɴᴇ:
+        sᴇʟғ.ᴜsᴇ_ᴍᴏɴɢᴏ = ғᴀʟsᴇ
+        sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ = ɴᴏɴᴇ
+        sᴇʟғ.ɢʀᴏᴜᴘs_ᴄᴏʟ = ɴᴏɴᴇ
+        sᴇʟғ.ᴄʜᴀᴛs_ᴄᴏʟ = ɴᴏɴᴇ
+        sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs: ᴅɪᴄᴛ[ɪɴᴛ, ᴅɪᴄᴛ[sᴛʀ, ᴀɴʏ]] = {}
+        sᴇʟғ.ᴍᴇᴍ_ɢʀᴏᴜᴘs: ᴅɪᴄᴛ[ᴛᴜᴘʟᴇ[ɪɴᴛ, ɪɴᴛ], ᴅɪᴄᴛ[sᴛʀ, ᴀɴʏ]] = {}
+        sᴇʟғ.ᴍᴇᴍ_ᴄʜᴀᴛs: sᴇᴛ[ɪɴᴛ] = sᴇᴛ()
 
-        if uri:
-            try:
-                client = MongoClient(uri, serverSelectionTimeoutMS=6000)
-                client.admin.command("ping")
-                db = client[db_name]
-                self.users_col = db["users"]
-                self.groups_col = db["group_scores"]
-                self.chats_col = db["known_chats"]
-                self.users_col.create_index("coins")
-                self.groups_col.create_index([("chat_id", 1), ("coins", -1)])
-                self.use_mongo = True
-                logger.info("Connected to MongoDB Atlas successfully.")
-            except Exception as exc:
-                logger.warning("MongoDB connection failed (%s). Using in-memory fallback.", exc)
-        else:
-            logger.info("MONGO_URI not set. Using in-memory store.")
+        ɪғ ᴜʀɪ:
+            ᴛʀʏ:
+                ᴄʟɪᴇɴᴛ = ᴍᴏɴɢᴏᴄʟɪᴇɴᴛ(ᴜʀɪ, sᴇʀᴠᴇʀsᴇʟᴇᴄᴛɪᴏɴᴛɪᴍᴇᴏᴜᴛᴍs=𝟼𝟶𝟶𝟶)
+                ᴄʟɪᴇɴᴛ.ᴀᴅᴍɪɴ.ᴄᴏᴍᴍᴀɴᴅ("ᴘɪɴɢ")
+                ᴅʙ = ᴄʟɪᴇɴᴛ[ᴅʙ_ɴᴀᴍᴇ]
+                sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ = ᴅʙ["ᴜsᴇʀs"]
+                sᴇʟғ.ɢʀᴏᴜᴘs_ᴄᴏʟ = ᴅʙ["ɢʀᴏᴜᴘ_sᴄᴏʀᴇs"]
+                sᴇʟғ.ᴄʜᴀᴛs_ᴄᴏʟ = ᴅʙ["ᴋɴᴏᴡɴ_ᴄʜᴀᴛs"]
+                sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ᴄʀᴇᴀᴛᴇ_ɪɴᴅᴇx("ᴄᴏɪɴs")
+                sᴇʟғ.ɢʀᴏᴜᴘs_ᴄᴏʟ.ᴄʀᴇᴀᴛᴇ_ɪɴᴅᴇx([("ᴄʜᴀᴛ_ɪᴅ", 𝟷), ("ᴄᴏɪɴs", -𝟷)])
+                sᴇʟғ.ᴜsᴇ_ᴍᴏɴɢᴏ = ᴛʀᴜᴇ
+                ʟᴏɢɢᴇʀ.ɪɴғᴏ("ᴄᴏɴɴᴇᴄᴛᴇᴅ ᴛᴏ ᴍᴏɴɢᴏᴅʙ ᴀᴛʟᴀs sᴜᴄᴄᴇssғᴜʟʟʏ.")
+            ᴇxᴄᴇᴘᴛ ᴇxᴄᴇᴘᴛɪᴏɴ ᴀs ᴇxᴄ:
+                ʟᴏɢɢᴇʀ.ᴡᴀʀɴɪɴɢ("ᴍᴏɴɢᴏᴅʙ ᴄᴏɴɴᴇᴄᴛɪᴏɴ ғᴀɪʟᴇᴅ (%s). ᴜsɪɴɢ ɪɴ-ᴍᴇᴍᴏʀʏ ғᴀʟʟʙᴀᴄᴋ.", ᴇxᴄ)
+        ᴇʟsᴇ:
+            ʟᴏɢɢᴇʀ.ɪɴғᴏ("ᴍᴏɴɢᴏ_ᴜʀɪ ɴᴏᴛ sᴇᴛ. ᴜsɪɴɢ ɪɴ-ᴍᴇᴍᴏʀʏ sᴛᴏʀᴇ.")
 
-    @staticmethod
-    def _default_user(user_id: int, name: str, username: Optional[str]) -> Dict[str, Any]:
-        return {
-            "user_id": user_id,
-            "name": name or "Player",
-            "username": username or "",
-            "coins": WELCOME_COINS,
-            "last_daily": 0.0,
-            "last_refill": 0.0,
-            "referred_by": None,
-            "referrals": 0,
-            "games_played": 0,
-            "games_won": 0,
+    @sᴛᴀᴛɪᴄᴍᴇᴛʜᴏᴅ
+    ᴅᴇғ _ᴅᴇғᴀᴜʟᴛ_ᴜsᴇʀ(ᴜsᴇʀ_ɪᴅ: ɪɴᴛ, ɴᴀᴍᴇ: sᴛʀ, ᴜsᴇʀɴᴀᴍᴇ: ᴏᴘᴛɪᴏɴᴀʟ[sᴛʀ]) -> ᴅɪᴄᴛ[sᴛʀ, ᴀɴʏ]:
+        ʀᴇᴛᴜʀɴ {
+            "ᴜsᴇʀ_ɪᴅ": ᴜsᴇʀ_ɪᴅ,
+            "ɴᴀᴍᴇ": ɴᴀᴍᴇ ᴏʀ "ᴘʟᴀʏᴇʀ",
+            "ᴜsᴇʀɴᴀᴍᴇ": ᴜsᴇʀɴᴀᴍᴇ ᴏʀ "",
+            "ᴄᴏɪɴs": ᴡᴇʟᴄᴏᴍᴇ_ᴄᴏɪɴs,
+            "ʟᴀsᴛ_ᴅᴀɪʟʏ": 𝟶.𝟶,
+            "ʟᴀsᴛ_ʀᴇғɪʟʟ": 𝟶.𝟶,
+            "ʀᴇғᴇʀʀᴇᴅ_ʙʏ": ɴᴏɴᴇ,
+            "ʀᴇғᴇʀʀᴀʟs": 𝟶,
+            "ɢᴀᴍᴇs_ᴘʟᴀʏᴇᴅ": 𝟶,
+            "ɢᴀᴍᴇs_ᴡᴏɴ": 𝟶,
         }
 
-    def ensure_user(
-        self, user_id: int, name: str, username: Optional[str], referrer_id: Optional[int] = None
-    ) -> Tuple[Dict[str, Any], bool, int]:
-        clean_name = (name or "Player")[:60]
-        clean_user = (username or "").lstrip("@")
+    ᴅᴇғ ᴇɴsᴜʀᴇ_ᴜsᴇʀ(
+        sᴇʟғ, ᴜsᴇʀ_ɪᴅ: ɪɴᴛ, ɴᴀᴍᴇ: sᴛʀ, ᴜsᴇʀɴᴀᴍᴇ: ᴏᴘᴛɪᴏɴᴀʟ[sᴛʀ], ʀᴇғᴇʀʀᴇʀ_ɪᴅ: ᴏᴘᴛɪᴏɴᴀʟ[ɪɴᴛ] = ɴᴏɴᴇ
+    ) -> ᴛᴜᴘʟᴇ[ᴅɪᴄᴛ[sᴛʀ, ᴀɴʏ], ʙᴏᴏʟ, ɪɴᴛ]:
+        ᴄʟᴇᴀɴ_ɴᴀᴍᴇ = (ɴᴀᴍᴇ ᴏʀ "ᴘʟᴀʏᴇʀ")[:𝟼𝟶]
+        ᴄʟᴇᴀɴ_ᴜsᴇʀ = (ᴜsᴇʀɴᴀᴍᴇ ᴏʀ "").ʟsᴛʀɪᴘ("@")
 
-        if self.use_mongo:
-            existing = self.users_col.find_one({"user_id": user_id})
-            if existing:
-                self.users_col.update_one(
-                    {"user_id": user_id},
-                    {"$set": {"name": clean_name, "username": clean_user}},
+        ɪғ sᴇʟғ.ᴜsᴇ_ᴍᴏɴɢᴏ:
+            ᴇxɪsᴛɪɴɢ = sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ғɪɴᴅ_ᴏɴᴇ({"ᴜsᴇʀ_ɪᴅ": ᴜsᴇʀ_ɪᴅ})
+            ɪғ ᴇxɪsᴛɪɴɢ:
+                sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ᴜᴘᴅᴀᴛᴇ_ᴏɴᴇ(
+                    {"ᴜsᴇʀ_ɪᴅ": ᴜsᴇʀ_ɪᴅ},
+                    {"$sᴇᴛ": {"ɴᴀᴍᴇ": ᴄʟᴇᴀɴ_ɴᴀᴍᴇ, "ᴜsᴇʀɴᴀᴍᴇ": ᴄʟᴇᴀɴ_ᴜsᴇʀ}},
                 )
-                existing["name"] = clean_name
-                existing["username"] = clean_user
-                return existing, False, 0
+                ᴇxɪsᴛɪɴɢ["ɴᴀᴍᴇ"] = ᴄʟᴇᴀɴ_ɴᴀᴍᴇ
+                ᴇxɪsᴛɪɴɢ["ᴜsᴇʀɴᴀᴍᴇ"] = ᴄʟᴇᴀɴ_ᴜsᴇʀ
+                ʀᴇᴛᴜʀɴ ᴇxɪsᴛɪɴɢ, ғᴀʟsᴇ, 𝟶
 
-            bonus = 0
-            valid_ref: Optional[int] = None
-            if referrer_id and referrer_id != user_id:
-                ref_doc = self.users_col.find_one({"user_id": referrer_id})
-                if ref_doc:
-                    valid_ref = referrer_id
-                    bonus = REFERRAL_BONUS_USER
-                    self.users_col.update_one(
-                        {"user_id": referrer_id},
-                        {"$inc": {"coins": REFERRAL_BONUS_REFERRER, "referrals": 1}},
+            ʙᴏɴᴜs = 𝟶
+            ᴠᴀʟɪᴅ_ʀᴇғ: ᴏᴘᴛɪᴏɴᴀʟ[ɪɴᴛ] = ɴᴏɴᴇ
+            ɪғ ʀᴇғᴇʀʀᴇʀ_ɪᴅ ᴀɴᴅ ʀᴇғᴇʀʀᴇʀ_ɪᴅ != ᴜsᴇʀ_ɪᴅ:
+                ʀᴇғ_ᴅᴏᴄ = sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ғɪɴᴅ_ᴏɴᴇ({"ᴜsᴇʀ_ɪᴅ": ʀᴇғᴇʀʀᴇʀ_ɪᴅ})
+                ɪғ ʀᴇғ_ᴅᴏᴄ:
+                    ᴠᴀʟɪᴅ_ʀᴇғ = ʀᴇғᴇʀʀᴇʀ_ɪᴅ
+                    ʙᴏɴᴜs = ʀᴇғᴇʀʀᴀʟ_ʙᴏɴᴜs_ᴜsᴇʀ
+                    sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ᴜᴘᴅᴀᴛᴇ_ᴏɴᴇ(
+                        {"ᴜsᴇʀ_ɪᴅ": ʀᴇғᴇʀʀᴇʀ_ɪᴅ},
+                        {"$ɪɴᴄ": {"ᴄᴏɪɴs": ʀᴇғᴇʀʀᴀʟ_ʙᴏɴᴜs_ʀᴇғᴇʀʀᴇʀ, "ʀᴇғᴇʀʀᴀʟs": 𝟷}},
                     )
 
-            doc = self._default_user(user_id, clean_name, clean_user)
-            doc["coins"] = WELCOME_COINS + bonus
-            doc["referred_by"] = valid_ref
-            self.users_col.insert_one(doc)
-            return doc, True, bonus
+            ᴅᴏᴄ = sᴇʟғ._ᴅᴇғᴀᴜʟᴛ_ᴜsᴇʀ(ᴜsᴇʀ_ɪᴅ, ᴄʟᴇᴀɴ_ɴᴀᴍᴇ, ᴄʟᴇᴀɴ_ᴜsᴇʀ)
+            ᴅᴏᴄ["ᴄᴏɪɴs"] = ᴡᴇʟᴄᴏᴍᴇ_ᴄᴏɪɴs + ʙᴏɴᴜs
+            ᴅᴏᴄ["ʀᴇғᴇʀʀᴇᴅ_ʙʏ"] = ᴠᴀʟɪᴅ_ʀᴇғ
+            sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ɪɴsᴇʀᴛ_ᴏɴᴇ(ᴅᴏᴄ)
+            ʀᴇᴛᴜʀɴ ᴅᴏᴄ, ᴛʀᴜᴇ, ʙᴏɴᴜs
 
-        if user_id in self.mem_users:
-            doc = self.mem_users[user_id]
-            doc["name"] = clean_name
-            doc["username"] = clean_user
-            return doc, False, 0
+        ɪғ ᴜsᴇʀ_ɪᴅ ɪɴ sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs:
+            ᴅᴏᴄ = sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs[ᴜsᴇʀ_ɪᴅ]
+            ᴅᴏᴄ["ɴᴀᴍᴇ"] = ᴄʟᴇᴀɴ_ɴᴀᴍᴇ
+            ᴅᴏᴄ["ᴜsᴇʀɴᴀᴍᴇ"] = ᴄʟᴇᴀɴ_ᴜsᴇʀ
+            ʀᴇᴛᴜʀɴ ᴅᴏᴄ, ғᴀʟsᴇ, 𝟶
 
-        bonus = 0
-        valid_ref = None
-        if referrer_id and referrer_id != user_id and referrer_id in self.mem_users:
-            valid_ref = referrer_id
-            bonus = REFERRAL_BONUS_USER
-            self.mem_users[referrer_id]["coins"] += REFERRAL_BONUS_REFERRER
-            self.mem_users[referrer_id]["referrals"] += 1
+        ʙᴏɴᴜs = 𝟶
+        ᴠᴀʟɪᴅ_ʀᴇғ = ɴᴏɴᴇ
+        ɪғ ʀᴇғᴇʀʀᴇʀ_ɪᴅ ᴀɴᴅ ʀᴇғᴇʀʀᴇʀ_ɪᴅ != ᴜsᴇʀ_ɪᴅ ᴀɴᴅ ʀᴇғᴇʀʀᴇʀ_ɪᴅ ɪɴ sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs:
+            ᴠᴀʟɪᴅ_ʀᴇғ = ʀᴇғᴇʀʀᴇʀ_ɪᴅ
+            ʙᴏɴᴜs = ʀᴇғᴇʀʀᴀʟ_ʙᴏɴᴜs_ᴜsᴇʀ
+            sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs[ʀᴇғᴇʀʀᴇʀ_ɪᴅ]["ᴄᴏɪɴs"] += ʀᴇғᴇʀʀᴀʟ_ʙᴏɴᴜs_ʀᴇғᴇʀʀᴇʀ
+            sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs[ʀᴇғᴇʀʀᴇʀ_ɪᴅ]["ʀᴇғᴇʀʀᴀʟs"] += 𝟷
 
-        doc = self._default_user(user_id, clean_name, clean_user)
-        doc["coins"] = WELCOME_COINS + bonus
-        doc["referred_by"] = valid_ref
-        self.mem_users[user_id] = doc
-        return doc, True, bonus
+        ᴅᴏᴄ = sᴇʟғ._ᴅᴇғᴀᴜʟᴛ_ᴜsᴇʀ(ᴜsᴇʀ_ɪᴅ, ᴄʟᴇᴀɴ_ɴᴀᴍᴇ, ᴄʟᴇᴀɴ_ᴜsᴇʀ)
+        ᴅᴏᴄ["ᴄᴏɪɴs"] = ᴡᴇʟᴄᴏᴍᴇ_ᴄᴏɪɴs + ʙᴏɴᴜs
+        ᴅᴏᴄ["ʀᴇғᴇʀʀᴇᴅ_ʙʏ"] = ᴠᴀʟɪᴅ_ʀᴇғ
+        sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs[ᴜsᴇʀ_ɪᴅ] = ᴅᴏᴄ
+        ʀᴇᴛᴜʀɴ ᴅᴏᴄ, ᴛʀᴜᴇ, ʙᴏɴᴜs
 
-    def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
-        if self.use_mongo:
-            return self.users_col.find_one({"user_id": user_id})
-        return self.mem_users.get(user_id)
+    ᴅᴇғ ɢᴇᴛ_ᴜsᴇʀ(sᴇʟғ, ᴜsᴇʀ_ɪᴅ: ɪɴᴛ) -> ᴏᴘᴛɪᴏɴᴀʟ[ᴅɪᴄᴛ[sᴛʀ, ᴀɴʏ]]:
+        ɪғ sᴇʟғ.ᴜsᴇ_ᴍᴏɴɢᴏ:
+            ʀᴇᴛᴜʀɴ sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ғɪɴᴅ_ᴏɴᴇ({"ᴜsᴇʀ_ɪᴅ": ᴜsᴇʀ_ɪᴅ})
+        ʀᴇᴛᴜʀɴ sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs.ɢᴇᴛ(ᴜsᴇʀ_ɪᴅ)
 
-    def find_user_by_username(self, username: str) -> Optional[Dict[str, Any]]:
-        uname = username.lstrip("@").lower()
-        if not uname:
-            return None
-        if self.use_mongo:
-            return self.users_col.find_one({"username": {"$regex": f"^{uname}$", "$options": "i"}})
-        for doc in self.mem_users.values():
-            if (doc.get("username") or "").lower() == uname:
-                return doc
-        return None
+    ᴅᴇғ ғɪɴᴅ_ᴜsᴇʀ_ʙʏ_ᴜsᴇʀɴᴀᴍᴇ(sᴇʟғ, ᴜsᴇʀɴᴀᴍᴇ: sᴛʀ) -> ᴏᴘᴛɪᴏɴᴀʟ[ᴅɪᴄᴛ[sᴛʀ, ᴀɴʏ]]:
+        ᴜɴᴀᴍᴇ = ᴜsᴇʀɴᴀᴍᴇ.ʟsᴛʀɪᴘ("@").ʟᴏᴡᴇʀ()
+        ɪғ ɴᴏᴛ ᴜɴᴀᴍᴇ:
+            ʀᴇᴛᴜʀɴ ɴᴏɴᴇ
+        ɪғ sᴇʟғ.ᴜsᴇ_ᴍᴏɴɢᴏ:
+            ʀᴇᴛᴜʀɴ sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ғɪɴᴅ_ᴏɴᴇ({"ᴜsᴇʀɴᴀᴍᴇ": {"$ʀᴇɢᴇx": ғ"^{ᴜɴᴀᴍᴇ}$", "$ᴏᴘᴛɪᴏɴs": "ɪ"}})
+        ғᴏʀ ᴅᴏᴄ ɪɴ sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs.ᴠᴀʟᴜᴇs():
+            ɪғ (ᴅᴏᴄ.ɢᴇᴛ("ᴜsᴇʀɴᴀᴍᴇ") ᴏʀ "").ʟᴏᴡᴇʀ() == ᴜɴᴀᴍᴇ:
+                ʀᴇᴛᴜʀɴ ᴅᴏᴄ
+        ʀᴇᴛᴜʀɴ ɴᴏɴᴇ
 
-    def register_chat(self, chat_id: int, chat_type: str, title: Optional[str] = None) -> None:
-        if self.use_mongo:
-            self.chats_col.update_one(
-                {"chat_id": chat_id},
-                {"$set": {"chat_id": chat_id, "type": chat_type, "title": title or ""}},
-                upsert=True,
+    ᴅᴇғ ʀᴇɢɪsᴛᴇʀ_ᴄʜᴀᴛ(sᴇʟғ, ᴄʜᴀᴛ_ɪᴅ: ɪɴᴛ, ᴄʜᴀᴛ_ᴛʏᴘᴇ: sᴛʀ, ᴛɪᴛʟᴇ: ᴏᴘᴛɪᴏɴᴀʟ[sᴛʀ] = ɴᴏɴᴇ) -> ɴᴏɴᴇ:
+        ɪғ sᴇʟғ.ᴜsᴇ_ᴍᴏɴɢᴏ:
+            sᴇʟғ.ᴄʜᴀᴛs_ᴄᴏʟ.ᴜᴘᴅᴀᴛᴇ_ᴏɴᴇ(
+                {"ᴄʜᴀᴛ_ɪᴅ": ᴄʜᴀᴛ_ɪᴅ},
+                {"$sᴇᴛ": {"ᴄʜᴀᴛ_ɪᴅ": ᴄʜᴀᴛ_ɪᴅ, "ᴛʏᴘᴇ": ᴄʜᴀᴛ_ᴛʏᴘᴇ, "ᴛɪᴛʟᴇ": ᴛɪᴛʟᴇ ᴏʀ ""}},
+                ᴜᴘsᴇʀᴛ=ᴛʀᴜᴇ,
             )
-        else:
-            self.mem_chats.add(chat_id)
+        ᴇʟsᴇ:
+            sᴇʟғ.ᴍᴇᴍ_ᴄʜᴀᴛs.ᴀᴅᴅ(ᴄʜᴀᴛ_ɪᴅ)
 
-    def sync_group_score(self, chat_id: Optional[int], user_id: int, name: str, delta_coins: int) -> None:
-        if not chat_id or chat_id > 0:
-            return
-        clean_name = (name or "Player")[:60]
-        if self.use_mongo:
-            self.groups_col.update_one(
-                {"chat_id": chat_id, "user_id": user_id},
-                {"$set": {"name": clean_name}, "$inc": {"coins": delta_coins}},
-                upsert=True,
+    ᴅᴇғ sʏɴᴄ_ɢʀᴏᴜᴘ_sᴄᴏʀᴇ(sᴇʟғ, ᴄʜᴀᴛ_ɪᴅ: ᴏᴘᴛɪᴏɴᴀʟ[ɪɴᴛ], ᴜsᴇʀ_ɪᴅ: ɪɴᴛ, ɴᴀᴍᴇ: sᴛʀ, ᴅᴇʟᴛᴀ_ᴄᴏɪɴs: ɪɴᴛ) -> ɴᴏɴᴇ:
+        ɪғ ɴᴏᴛ ᴄʜᴀᴛ_ɪᴅ ᴏʀ ᴄʜᴀᴛ_ɪᴅ > 𝟶:
+            ʀᴇᴛᴜʀɴ
+        ᴄʟᴇᴀɴ_ɴᴀᴍᴇ = (ɴᴀᴍᴇ ᴏʀ "ᴘʟᴀʏᴇʀ")[:𝟼𝟶]
+        ɪғ sᴇʟғ.ᴜsᴇ_ᴍᴏɴɢᴏ:
+            sᴇʟғ.ɢʀᴏᴜᴘs_ᴄᴏʟ.ᴜᴘᴅᴀᴛᴇ_ᴏɴᴇ(
+                {"ᴄʜᴀᴛ_ɪᴅ": ᴄʜᴀᴛ_ɪᴅ, "ᴜsᴇʀ_ɪᴅ": ᴜsᴇʀ_ɪᴅ},
+                {"$sᴇᴛ": {"ɴᴀᴍᴇ": ᴄʟᴇᴀɴ_ɴᴀᴍᴇ}, "$ɪɴᴄ": {"ᴄᴏɪɴs": ᴅᴇʟᴛᴀ_ᴄᴏɪɴs}},
+                ᴜᴘsᴇʀᴛ=ᴛʀᴜᴇ,
             )
-        else:
-            key = (chat_id, user_id)
-            if key not in self.mem_groups:
-                self.mem_groups[key] = {"chat_id": chat_id, "user_id": user_id, "name": clean_name, "coins": 0}
-            self.mem_groups[key]["name"] = clean_name
-            self.mem_groups[key]["coins"] += delta_coins
+        ᴇʟsᴇ:
+            ᴋᴇʏ = (ᴄʜᴀᴛ_ɪᴅ, ᴜsᴇʀ_ɪᴅ)
+            ɪғ ᴋᴇʏ ɴᴏᴛ ɪɴ sᴇʟғ.ᴍᴇᴍ_ɢʀᴏᴜᴘs:
+                sᴇʟғ.ᴍᴇᴍ_ɢʀᴏᴜᴘs[ᴋᴇʏ] = {"ᴄʜᴀᴛ_ɪᴅ": ᴄʜᴀᴛ_ɪᴅ, "ᴜsᴇʀ_ɪᴅ": ᴜsᴇʀ_ɪᴅ, "ɴᴀᴍᴇ": ᴄʟᴇᴀɴ_ɴᴀᴍᴇ, "ᴄᴏɪɴs": 𝟶}
+            sᴇʟғ.ᴍᴇᴍ_ɢʀᴏᴜᴘs[ᴋᴇʏ]["ɴᴀᴍᴇ"] = ᴄʟᴇᴀɴ_ɴᴀᴍᴇ
+            sᴇʟғ.ᴍᴇᴍ_ɢʀᴏᴜᴘs[ᴋᴇʏ]["ᴄᴏɪɴs"] += ᴅᴇʟᴛᴀ_ᴄᴏɪɴs
 
-    def adjust_coins(
-        self,
-        user_id: int,
-        delta: int,
-        chat_id: Optional[int] = None,
-        name: str = "Player",
-        played_delta: int = 0,
-        won_delta: int = 0,
-    ) -> Optional[int]:
-        if self.use_mongo:
-            if delta < 0:
-                updated = self.users_col.find_one_and_update(
-                    {"user_id": user_id, "coins": {"$gte": abs(delta)}},
-                    {"$inc": {"coins": delta, "games_played": played_delta, "games_won": won_delta}},
-                    return_document=ReturnDocument.AFTER,
+    ᴅᴇғ ᴀᴅᴊᴜsᴛ_ᴄᴏɪɴs(
+        sᴇʟғ,
+        ᴜsᴇʀ_ɪᴅ: ɪɴᴛ,
+        ᴅᴇʟᴛᴀ: ɪɴᴛ,
+        ᴄʜᴀᴛ_ɪᴅ: ᴏᴘᴛɪᴏɴᴀʟ[ɪɴᴛ] = ɴᴏɴᴇ,
+        ɴᴀᴍᴇ: sᴛʀ = "ᴘʟᴀʏᴇʀ",
+        ᴘʟᴀʏᴇᴅ_ᴅᴇʟᴛᴀ: ɪɴᴛ = 𝟶,
+        ᴡᴏɴ_ᴅᴇʟᴛᴀ: ɪɴᴛ = 𝟶,
+    ) -> ᴏᴘᴛɪᴏɴᴀʟ[ɪɴᴛ]:
+        ɪғ sᴇʟғ.ᴜsᴇ_ᴍᴏɴɢᴏ:
+            ɪғ ᴅᴇʟᴛᴀ < 𝟶:
+                ᴜᴘᴅᴀᴛᴇᴅ = sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ғɪɴᴅ_ᴏɴᴇ_ᴀɴᴅ_ᴜᴘᴅᴀᴛᴇ(
+                    {"ᴜsᴇʀ_ɪᴅ": ᴜsᴇʀ_ɪᴅ, "ᴄᴏɪɴs": {"$ɢᴛᴇ": ᴀʙs(ᴅᴇʟᴛᴀ)}},
+                    {"$ɪɴᴄ": {"ᴄᴏɪɴs": ᴅᴇʟᴛᴀ, "ɢᴀᴍᴇs_ᴘʟᴀʏᴇᴅ": ᴘʟᴀʏᴇᴅ_ᴅᴇʟᴛᴀ, "ɢᴀᴍᴇs_ᴡᴏɴ": ᴡᴏɴ_ᴅᴇʟᴛᴀ}},
+                    ʀᴇᴛᴜʀɴ_ᴅᴏᴄᴜᴍᴇɴᴛ=ʀᴇᴛᴜʀɴᴅᴏᴄᴜᴍᴇɴᴛ.ᴀғᴛᴇʀ,
                 )
-                if not updated:
-                    return None
-                self.sync_group_score(chat_id, user_id, name, delta)
-                return int(updated["coins"])
-            updated = self.users_col.find_one_and_update(
-                {"user_id": user_id},
-                {"$inc": {"coins": delta, "games_played": played_delta, "games_won": won_delta}},
-                upsert=True,
-                return_document=ReturnDocument.AFTER,
+                ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇᴅ:
+                    ʀᴇᴛᴜʀɴ ɴᴏɴᴇ
+                sᴇʟғ.sʏɴᴄ_ɢʀᴏᴜᴘ_sᴄᴏʀᴇ(ᴄʜᴀᴛ_ɪᴅ, ᴜsᴇʀ_ɪᴅ, ɴᴀᴍᴇ, ᴅᴇʟᴛᴀ)
+                ʀᴇᴛᴜʀɴ ɪɴᴛ(ᴜᴘᴅᴀᴛᴇᴅ["ᴄᴏɪɴs"])
+            ᴜᴘᴅᴀᴛᴇᴅ = sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ғɪɴᴅ_ᴏɴᴇ_ᴀɴᴅ_ᴜᴘᴅᴀᴛᴇ(
+                {"ᴜsᴇʀ_ɪᴅ": ᴜsᴇʀ_ɪᴅ},
+                {"$ɪɴᴄ": {"ᴄᴏɪɴs": ᴅᴇʟᴛᴀ, "ɢᴀᴍᴇs_ᴘʟᴀʏᴇᴅ": ᴘʟᴀʏᴇᴅ_ᴅᴇʟᴛᴀ, "ɢᴀᴍᴇs_ᴡᴏɴ": ᴡᴏɴ_ᴅᴇʟᴛᴀ}},
+                ᴜᴘsᴇʀᴛ=ᴛʀᴜᴇ,
+                ʀᴇᴛᴜʀɴ_ᴅᴏᴄᴜᴍᴇɴᴛ=ʀᴇᴛᴜʀɴᴅᴏᴄᴜᴍᴇɴᴛ.ᴀғᴛᴇʀ,
             )
-            self.sync_group_score(chat_id, user_id, name, delta)
-            return int(updated["coins"])
+            sᴇʟғ.sʏɴᴄ_ɢʀᴏᴜᴘ_sᴄᴏʀᴇ(ᴄʜᴀᴛ_ɪᴅ, ᴜsᴇʀ_ɪᴅ, ɴᴀᴍᴇ, ᴅᴇʟᴛᴀ)
+            ʀᴇᴛᴜʀɴ ɪɴᴛ(ᴜᴘᴅᴀᴛᴇᴅ["ᴄᴏɪɴs"])
 
-        doc = self.mem_users.get(user_id)
-        if not doc:
-            doc = self._default_user(user_id, name, "")
-            self.mem_users[user_id] = doc
-        if delta < 0 and doc["coins"] < abs(delta):
-            return None
-        doc["coins"] += delta
-        doc["games_played"] = doc.get("games_played", 0) + played_delta
-        doc["games_won"] = doc.get("games_won", 0) + won_delta
-        self.sync_group_score(chat_id, user_id, name, delta)
-        return int(doc["coins"])
+        ᴅᴏᴄ = sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs.ɢᴇᴛ(ᴜsᴇʀ_ɪᴅ)
+        ɪғ ɴᴏᴛ ᴅᴏᴄ:
+            ᴅᴏᴄ = sᴇʟғ._ᴅᴇғᴀᴜʟᴛ_ᴜsᴇʀ(ᴜsᴇʀ_ɪᴅ, ɴᴀᴍᴇ, "")
+            sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs[ᴜsᴇʀ_ɪᴅ] = ᴅᴏᴄ
+        ɪғ ᴅᴇʟᴛᴀ < 𝟶 ᴀɴᴅ ᴅᴏᴄ["ᴄᴏɪɴs"] < ᴀʙs(ᴅᴇʟᴛᴀ):
+            ʀᴇᴛᴜʀɴ ɴᴏɴᴇ
+        ᴅᴏᴄ["ᴄᴏɪɴs"] += ᴅᴇʟᴛᴀ
+        ᴅᴏᴄ["ɢᴀᴍᴇs_ᴘʟᴀʏᴇᴅ"] = ᴅᴏᴄ.ɢᴇᴛ("ɢᴀᴍᴇs_ᴘʟᴀʏᴇᴅ", 𝟶) + ᴘʟᴀʏᴇᴅ_ᴅᴇʟᴛᴀ
+        ᴅᴏᴄ["ɢᴀᴍᴇs_ᴡᴏɴ"] = ᴅᴏᴄ.ɢᴇᴛ("ɢᴀᴍᴇs_ᴡᴏɴ", 𝟶) + ᴡᴏɴ_ᴅᴇʟᴛᴀ
+        sᴇʟғ.sʏɴᴄ_ɢʀᴏᴜᴘ_sᴄᴏʀᴇ(ᴄʜᴀᴛ_ɪᴅ, ᴜsᴇʀ_ɪᴅ, ɴᴀᴍᴇ, ᴅᴇʟᴛᴀ)
+        ʀᴇᴛᴜʀɴ ɪɴᴛ(ᴅᴏᴄ["ᴄᴏɪɴs"])
 
-    def set_coins(self, user_id: int, amount: int) -> bool:
-        safe_amt = max(0, amount)
-        if self.use_mongo:
-            res = self.users_col.update_one({"user_id": user_id}, {"$set": {"coins": safe_amt}})
-            return res.matched_count > 0
-        if user_id in self.mem_users:
-            self.mem_users[user_id]["coins"] = safe_amt
-            return True
-        return False
+    ᴅᴇғ sᴇᴛ_ᴄᴏɪɴs(sᴇʟғ, ᴜsᴇʀ_ɪᴅ: ɪɴᴛ, ᴀᴍᴏᴜɴᴛ: ɪɴᴛ) -> ʙᴏᴏʟ:
+        sᴀғᴇ_ᴀᴍᴛ = ᴍᴀx(𝟶, ᴀᴍᴏᴜɴᴛ)
+        ɪғ sᴇʟғ.ᴜsᴇ_ᴍᴏɴɢᴏ:
+            ʀᴇs = sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ᴜᴘᴅᴀᴛᴇ_ᴏɴᴇ({"ᴜsᴇʀ_ɪᴅ": ᴜsᴇʀ_ɪᴅ}, {"$sᴇᴛ": {"ᴄᴏɪɴs": sᴀғᴇ_ᴀᴍᴛ}})
+            ʀᴇᴛᴜʀɴ ʀᴇs.ᴍᴀᴛᴄʜᴇᴅ_ᴄᴏᴜɴᴛ > 𝟶
+        ɪғ ᴜsᴇʀ_ɪᴅ ɪɴ sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs:
+            sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs[ᴜsᴇʀ_ɪᴅ]["ᴄᴏɪɴs"] = sᴀғᴇ_ᴀᴍᴛ
+            ʀᴇᴛᴜʀɴ ᴛʀᴜᴇ
+        ʀᴇᴛᴜʀɴ ғᴀʟsᴇ
 
-    def update_cooldown(self, user_id: int, field: str, ts: float, add_coins: int = 0) -> None:
-        if self.use_mongo:
-            update_doc: Dict[str, Any] = {"$set": {field: ts}}
-            if add_coins:
-                update_doc["$inc"] = {"coins": add_coins}
-            self.users_col.update_one({"user_id": user_id}, update_doc)
-        elif user_id in self.mem_users:
-            self.mem_users[user_id][field] = ts
-            if add_coins:
-                self.mem_users[user_id]["coins"] += add_coins
+    ᴅᴇғ ᴜᴘᴅᴀᴛᴇ_ᴄᴏᴏʟᴅᴏᴡɴ(sᴇʟғ, ᴜsᴇʀ_ɪᴅ: ɪɴᴛ, ғɪᴇʟᴅ: sᴛʀ, ᴛs: ғʟᴏᴀᴛ, ᴀᴅᴅ_ᴄᴏɪɴs: ɪɴᴛ = 𝟶) -> ɴᴏɴᴇ:
+        ɪғ sᴇʟғ.ᴜsᴇ_ᴍᴏɴɢᴏ:
+            ᴜᴘᴅᴀᴛᴇ_ᴅᴏᴄ: ᴅɪᴄᴛ[sᴛʀ, ᴀɴʏ] = {"$sᴇᴛ": {ғɪᴇʟᴅ: ᴛs}}
+            ɪғ ᴀᴅᴅ_ᴄᴏɪɴs:
+                ᴜᴘᴅᴀᴛᴇ_ᴅᴏᴄ["$ɪɴᴄ"] = {"ᴄᴏɪɴs": ᴀᴅᴅ_ᴄᴏɪɴs}
+            sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ᴜᴘᴅᴀᴛᴇ_ᴏɴᴇ({"ᴜsᴇʀ_ɪᴅ": ᴜsᴇʀ_ɪᴅ}, ᴜᴘᴅᴀᴛᴇ_ᴅᴏᴄ)
+        ᴇʟɪғ ᴜsᴇʀ_ɪᴅ ɪɴ sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs:
+            sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs[ᴜsᴇʀ_ɪᴅ][ғɪᴇʟᴅ] = ᴛs
+            ɪғ ᴀᴅᴅ_ᴄᴏɪɴs:
+                sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs[ᴜsᴇʀ_ɪᴅ]["ᴄᴏɪɴs"] += ᴀᴅᴅ_ᴄᴏɪɴs
 
-    def top_global(self, limit: int = 10) -> List[Dict[str, Any]]:
-        if self.use_mongo:
-            return list(self.users_col.find({}, {"_id": 0}).sort("coins", -1).limit(limit))
-        return sorted(self.mem_users.values(), key=lambda x: x.get("coins", 0), reverse=True)[:limit]
+    ᴅᴇғ ᴛᴏᴘ_ɢʟᴏʙᴀʟ(sᴇʟғ, ʟɪᴍɪᴛ: ɪɴᴛ = 𝟷𝟶) -> ʟɪsᴛ[ᴅɪᴄᴛ[sᴛʀ, ᴀɴʏ]]:
+        ɪғ sᴇʟғ.ᴜsᴇ_ᴍᴏɴɢᴏ:
+            ʀᴇᴛᴜʀɴ ʟɪsᴛ(sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ғɪɴᴅ({}, {"_ɪᴅ": 𝟶}).sᴏʀᴛ("ᴄᴏɪɴs", -𝟷).ʟɪᴍɪᴛ(ʟɪᴍɪᴛ))
+        ʀᴇᴛᴜʀɴ sᴏʀᴛᴇᴅ(sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs.ᴠᴀʟᴜᴇs(), ᴋᴇʏ=ʟᴀᴍʙᴅᴀ x: x.ɢᴇᴛ("ᴄᴏɪɴs", 𝟶), ʀᴇᴠᴇʀsᴇ=ᴛʀᴜᴇ)[:ʟɪᴍɪᴛ]
 
-    def top_group(self, chat_id: int, limit: int = 10) -> List[Dict[str, Any]]:
-        if self.use_mongo:
-            return list(
-                self.groups_col.find({"chat_id": chat_id}, {"_id": 0}).sort("coins", -1).limit(limit)
+    ᴅᴇғ ᴛᴏᴘ_ɢʀᴏᴜᴘ(sᴇʟғ, ᴄʜᴀᴛ_ɪᴅ: ɪɴᴛ, ʟɪᴍɪᴛ: ɪɴᴛ = 𝟷𝟶) -> ʟɪsᴛ[ᴅɪᴄᴛ[sᴛʀ, ᴀɴʏ]]:
+        ɪғ sᴇʟғ.ᴜsᴇ_ᴍᴏɴɢᴏ:
+            ʀᴇᴛᴜʀɴ ʟɪsᴛ(
+                sᴇʟғ.ɢʀᴏᴜᴘs_ᴄᴏʟ.ғɪɴᴅ({"ᴄʜᴀᴛ_ɪᴅ": ᴄʜᴀᴛ_ɪᴅ}, {"_ɪᴅ": 𝟶}).sᴏʀᴛ("ᴄᴏɪɴs", -𝟷).ʟɪᴍɪᴛ(ʟɪᴍɪᴛ)
             )
-        items = [v for (cid, _), v in self.mem_groups.items() if cid == chat_id]
-        return sorted(items, key=lambda x: x.get("coins", 0), reverse=True)[:limit]
+        ɪᴛᴇᴍs = [ᴠ ғᴏʀ (ᴄɪᴅ, _), ᴠ ɪɴ sᴇʟғ.ᴍᴇᴍ_ɢʀᴏᴜᴘs.ɪᴛᴇᴍs() ɪғ ᴄɪᴅ == ᴄʜᴀᴛ_ɪᴅ]
+        ʀᴇᴛᴜʀɴ sᴏʀᴛᴇᴅ(ɪᴛᴇᴍs, ᴋᴇʏ=ʟᴀᴍʙᴅᴀ x: x.ɢᴇᴛ("ᴄᴏɪɴs", 𝟶), ʀᴇᴠᴇʀsᴇ=ᴛʀᴜᴇ)[:ʟɪᴍɪᴛ]
 
-    def stats(self) -> Dict[str, int]:
-        if self.use_mongo:
-            users_count = self.users_col.count_documents({})
-            chats_count = self.chats_col.count_documents({})
-            agg = list(self.users_col.aggregate([{"$group": {"_id": None, "total": {"$sum": "$coins"}}}]))
-            total_coins = int(agg[0]["total"]) if agg else 0
-            return {"users": users_count, "chats": chats_count, "coins": total_coins}
-        total_coins = sum(u.get("coins", 0) for u in self.mem_users.values())
-        return {"users": len(self.mem_users), "chats": len(self.mem_chats), "coins": total_coins}
+    ᴅᴇғ sᴛᴀᴛs(sᴇʟғ) -> ᴅɪᴄᴛ[sᴛʀ, ɪɴᴛ]:
+        ɪғ sᴇʟғ.ᴜsᴇ_ᴍᴏɴɢᴏ:
+            ᴜsᴇʀs_ᴄᴏᴜɴᴛ = sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ᴄᴏᴜɴᴛ_ᴅᴏᴄᴜᴍᴇɴᴛs({})
+            ᴄʜᴀᴛs_ᴄᴏᴜɴᴛ = sᴇʟғ.ᴄʜᴀᴛs_ᴄᴏʟ.ᴄᴏᴜɴᴛ_ᴅᴏᴄᴜᴍᴇɴᴛs({})
+            ᴀɢɢ = ʟɪsᴛ(sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ᴀɢɢʀᴇɢᴀᴛᴇ([{"$ɢʀᴏᴜᴘ": {"_ɪᴅ": ɴᴏɴᴇ, "ᴛᴏᴛᴀʟ": {"$sᴜᴍ": "$ᴄᴏɪɴs"}}}]))
+            ᴛᴏᴛᴀʟ_ᴄᴏɪɴs = ɪɴᴛ(ᴀɢɢ[𝟶]["ᴛᴏᴛᴀʟ"]) ɪғ ᴀɢɢ ᴇʟsᴇ 𝟶
+            ʀᴇᴛᴜʀɴ {"ᴜsᴇʀs": ᴜsᴇʀs_ᴄᴏᴜɴᴛ, "ᴄʜᴀᴛs": ᴄʜᴀᴛs_ᴄᴏᴜɴᴛ, "ᴄᴏɪɴs": ᴛᴏᴛᴀʟ_ᴄᴏɪɴs}
+        ᴛᴏᴛᴀʟ_ᴄᴏɪɴs = sᴜᴍ(ᴜ.ɢᴇᴛ("ᴄᴏɪɴs", 𝟶) ғᴏʀ ᴜ ɪɴ sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs.ᴠᴀʟᴜᴇs())
+        ʀᴇᴛᴜʀɴ {"ᴜsᴇʀs": ʟᴇɴ(sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs), "ᴄʜᴀᴛs": ʟᴇɴ(sᴇʟғ.ᴍᴇᴍ_ᴄʜᴀᴛs), "ᴄᴏɪɴs": ᴛᴏᴛᴀʟ_ᴄᴏɪɴs}
 
-    def all_broadcast_targets(self) -> List[int]:
-        targets = set()
-        if self.use_mongo:
-            for u in self.users_col.find({}, {"user_id": 1}):
-                targets.add(int(u["user_id"]))
-            for c in self.chats_col.find({}, {"chat_id": 1}):
-                targets.add(int(c["chat_id"]))
-        else:
-            targets.update(self.mem_users.keys())
-            targets.update(self.mem_chats)
-        return list(targets)
-
-
-db = DatabaseManager(MONGO_URI, DB_NAME)
-ACTIVE_MINES: Dict[Tuple[int, int], Dict[str, Any]] = {}
+    ᴅᴇғ ᴀʟʟ_ʙʀᴏᴀᴅᴄᴀsᴛ_ᴛᴀʀɢᴇᴛs(sᴇʟғ) -> ʟɪsᴛ[ɪɴᴛ]:
+        ᴛᴀʀɢᴇᴛs = sᴇᴛ()
+        ɪғ sᴇʟғ.ᴜsᴇ_ᴍᴏɴɢᴏ:
+            ғᴏʀ ᴜ ɪɴ sᴇʟғ.ᴜsᴇʀs_ᴄᴏʟ.ғɪɴᴅ({}, {"ᴜsᴇʀ_ɪᴅ": 𝟷}):
+                ᴛᴀʀɢᴇᴛs.ᴀᴅᴅ(ɪɴᴛ(ᴜ["ᴜsᴇʀ_ɪᴅ"]))
+            ғᴏʀ ᴄ ɪɴ sᴇʟғ.ᴄʜᴀᴛs_ᴄᴏʟ.ғɪɴᴅ({}, {"ᴄʜᴀᴛ_ɪᴅ": 𝟷}):
+                ᴛᴀʀɢᴇᴛs.ᴀᴅᴅ(ɪɴᴛ(ᴄ["ᴄʜᴀᴛ_ɪᴅ"]))
+        ᴇʟsᴇ:
+            ᴛᴀʀɢᴇᴛs.ᴜᴘᴅᴀᴛᴇ(sᴇʟғ.ᴍᴇᴍ_ᴜsᴇʀs.ᴋᴇʏs())
+            ᴛᴀʀɢᴇᴛs.ᴜᴘᴅᴀᴛᴇ(sᴇʟғ.ᴍᴇᴍ_ᴄʜᴀᴛs)
+        ʀᴇᴛᴜʀɴ ʟɪsᴛ(ᴛᴀʀɢᴇᴛs)
 
 
-def is_owner(user_id: Optional[int]) -> bool:
-    return OWNER_ID is not None and user_id == OWNER_ID
+ᴅʙ = ᴅᴀᴛᴀʙᴀsᴇᴍᴀɴᴀɢᴇʀ(ᴍᴏɴɢᴏ_ᴜʀɪ, ᴅʙ_ɴᴀᴍᴇ)
+ᴀᴄᴛɪᴠᴇ_ᴍɪɴᴇs: ᴅɪᴄᴛ[ᴛᴜᴘʟᴇ[ɪɴᴛ, ɪɴᴛ], ᴅɪᴄᴛ[sᴛʀ, ᴀɴʏ]] = {}
 
 
-def fmt_duration(seconds: float) -> str:
-    rem = max(1, int(seconds))
-    hrs = rem // 3600
-    mins = (rem % 3600) // 60
-    secs = rem % 60
-    if hrs > 0:
-        return f"{hrs}h {mins}m"
-    if mins > 0:
-        return f"{mins}m {secs}s"
-    return f"{secs}s"
+ᴅᴇғ ɪs_ᴏᴡɴᴇʀ(ᴜsᴇʀ_ɪᴅ: ᴏᴘᴛɪᴏɴᴀʟ[ɪɴᴛ]) -> ʙᴏᴏʟ:
+    ʀᴇᴛᴜʀɴ ᴏᴡɴᴇʀ_ɪᴅ ɪs ɴᴏᴛ ɴᴏɴᴇ ᴀɴᴅ ᴜsᴇʀ_ɪᴅ == ᴏᴡɴᴇʀ_ɪᴅ
 
 
-def calc_mines_multiplier(revealed_count: int, mines_count: int = 4) -> float:
-    if revealed_count <= 0:
-        return 1.0
-    total_tiles = 25
-    safe_tiles = total_tiles - mines_count
-    prob = 1.0
-    for i in range(revealed_count):
-        prob *= (safe_tiles - i) / (total_tiles - i)
-    raw_mult = 0.94 / max(prob, 1e-6)
-    return round(max(1.05, min(raw_mult, 25.0)), 2)
+ᴅᴇғ ғᴍᴛ_ᴅᴜʀᴀᴛɪᴏɴ(sᴇᴄᴏɴᴅs: ғʟᴏᴀᴛ) -> sᴛʀ:
+    ʀᴇᴍ = ᴍᴀx(𝟷, ɪɴᴛ(sᴇᴄᴏɴᴅs))
+    ʜʀs = ʀᴇᴍ // 𝟹𝟼𝟶𝟶
+    ᴍɪɴs = (ʀᴇᴍ % 𝟹𝟼𝟶𝟶) // 𝟼𝟶
+    sᴇᴄs = ʀᴇᴍ % 𝟼𝟶
+    ɪғ ʜʀs > 𝟶:
+        ʀᴇᴛᴜʀɴ ғ"{ʜʀs}ʜ {ᴍɪɴs}ᴍ"
+    ɪғ ᴍɪɴs > 𝟶:
+        ʀᴇᴛᴜʀɴ ғ"{ᴍɪɴs}ᴍ {sᴇᴄs}s"
+    ʀᴇᴛᴜʀɴ ғ"{sᴇᴄs}s"
 
 
-def main_menu_keyboard() -> InlineKeyboardMarkup:
-    rows = [
+ᴅᴇғ ᴄᴀʟᴄ_ᴍɪɴᴇs_ᴍᴜʟᴛɪᴘʟɪᴇʀ(ʀᴇᴠᴇᴀʟᴇᴅ_ᴄᴏᴜɴᴛ: ɪɴᴛ, ᴍɪɴᴇs_ᴄᴏᴜɴᴛ: ɪɴᴛ = 𝟺) -> ғʟᴏᴀᴛ:
+    ɪғ ʀᴇᴠᴇᴀʟᴇᴅ_ᴄᴏᴜɴᴛ <= 𝟶:
+        ʀᴇᴛᴜʀɴ 𝟷.𝟶
+    ᴛᴏᴛᴀʟ_ᴛɪʟᴇs = 𝟸𝟻
+    sᴀғᴇ_ᴛɪʟᴇs = ᴛᴏᴛᴀʟ_ᴛɪʟᴇs - ᴍɪɴᴇs_ᴄᴏᴜɴᴛ
+    ᴘʀᴏʙ = 𝟷.𝟶
+    ғᴏʀ ɪ ɪɴ ʀᴀɴɢᴇ(ʀᴇᴠᴇᴀʟᴇᴅ_ᴄᴏᴜɴᴛ):
+        ᴘʀᴏʙ *= (sᴀғᴇ_ᴛɪʟᴇs - ɪ) / (ᴛᴏᴛᴀʟ_ᴛɪʟᴇs - ɪ)
+    ʀᴀᴡ_ᴍᴜʟᴛ = 𝟶.𝟿𝟺 / ᴍᴀx(ᴘʀᴏʙ, 𝟷ᴇ-𝟼)
+    ʀᴇᴛᴜʀɴ ʀᴏᴜɴᴅ(ᴍᴀx(𝟷.𝟶𝟻, ᴍɪɴ(ʀᴀᴡ_ᴍᴜʟᴛ, 𝟸𝟻.𝟶)), 𝟸)
+
+
+ᴅᴇғ ᴍᴀɪɴ_ᴍᴇɴᴜ_ᴋᴇʏʙᴏᴀʀᴅ() -> ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅᴍᴀʀᴋᴜᴘ:
+    ʀᴏᴡs = [
         [
-            InlineKeyboardButton("💣 Mines (Solo)", callback_data="menu_mines"),
-            InlineKeyboardButton("🪙 Coin Flip", callback_data="menu_flip"),
+            ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ("💣 ᴍɪɴᴇs (sᴏʟᴏ)", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ="ᴍᴇɴᴜ_ᴍɪɴᴇs"),
+            ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ("🪙 ᴄᴏɪɴ ғʟɪᴘ", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ="ᴍᴇɴᴜ_ғʟɪᴘ"),
         ],
         [
-            InlineKeyboardButton("🎲 Dice Bet", callback_data="menu_dice"),
-            InlineKeyboardButton("🎰 Slots Bet", callback_data="menu_slots"),
+            ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ("🎲 ᴅɪᴄᴇ ʙᴇᴛ", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ="ᴍᴇɴᴜ_ᴅɪᴄᴇ"),
+            ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ("🎰 sʟᴏᴛs ʙᴇᴛ", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ="ᴍᴇɴᴜ_sʟᴏᴛs"),
         ],
         [
-            InlineKeyboardButton("🎁 Daily (24h)", callback_data="act_daily"),
-            InlineKeyboardButton("🆘 Refill", callback_data="act_refill"),
+            ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ("🎁 ᴅᴀɪʟʏ (𝟸𝟺ʜ)", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ="ᴀᴄᴛ_ᴅᴀɪʟʏ"),
+            ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ("🆘 ʀᴇғɪʟʟ", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ="ᴀᴄᴛ_ʀᴇғɪʟʟ"),
         ],
         [
-            InlineKeyboardButton("👤 Profile", callback_data="act_profile"),
-            InlineKeyboardButton("🏆 Top Ranks", callback_data="act_top"),
+            ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ("👤 ᴘʀᴏғɪʟᴇ", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ="ᴀᴄᴛ_ᴘʀᴏғɪʟᴇ"),
+            ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ("🏆 ᴛᴏᴘ ʀᴀɴᴋs", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ="ᴀᴄᴛ_ᴛᴏᴘ"),
         ],
     ]
-    return InlineKeyboardMarkup(rows)
+    ʀᴇᴛᴜʀɴ ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅᴍᴀʀᴋᴜᴘ(ʀᴏᴡs)
 
 
-def bet_keyboard(game_prefix: str, extra: str = "") -> InlineKeyboardMarkup:
-    suffix = f":{extra}" if extra else ""
-    row1 = [InlineKeyboardButton(str(b), callback_data=f"bet:{game_prefix}:{b}{suffix}") for b in BET_OPTIONS[:3]]
-    row2 = [InlineKeyboardButton(str(b), callback_data=f"bet:{game_prefix}:{b}{suffix}") for b in BET_OPTIONS[3:]]
-    back_btn = [InlineKeyboardButton("⬅️ Back", callback_data="menu_home")]
-    return InlineKeyboardMarkup([row1, row2, back_btn])
+ᴅᴇғ ʙᴇᴛ_ᴋᴇʏʙᴏᴀʀᴅ(ɢᴀᴍᴇ_ᴘʀᴇғɪx: sᴛʀ, ᴇxᴛʀᴀ: sᴛʀ = "") -> ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅᴍᴀʀᴋᴜᴘ:
+    sᴜғғɪx = ғ":{ᴇxᴛʀᴀ}" ɪғ ᴇxᴛʀᴀ ᴇʟsᴇ ""
+    ʀᴏᴡ𝟷 = [ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ(sᴛʀ(ʙ), ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ=ғ"ʙᴇᴛ:{ɢᴀᴍᴇ_ᴘʀᴇғɪx}:{ʙ}{sᴜғғɪx}") ғᴏʀ ʙ ɪɴ ʙᴇᴛ_ᴏᴘᴛɪᴏɴs[:𝟹]]
+    ʀᴏᴡ𝟸 = [ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ(sᴛʀ(ʙ), ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ=ғ"ʙᴇᴛ:{ɢᴀᴍᴇ_ᴘʀᴇғɪx}:{ʙ}{sᴜғғɪx}") ғᴏʀ ʙ ɪɴ ʙᴇᴛ_ᴏᴘᴛɪᴏɴs[𝟹:]]
+    ʙᴀᴄᴋ_ʙᴛɴ = [ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ("⬅️ ʙᴀᴄᴋ", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ="ᴍᴇɴᴜ_ʜᴏᴍᴇ")]
+    ʀᴇᴛᴜʀɴ ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅᴍᴀʀᴋᴜᴘ([ʀᴏᴡ𝟷, ʀᴏᴡ𝟸, ʙᴀᴄᴋ_ʙᴛɴ])
 
 
-def build_mines_keyboard(game: Dict[str, Any], reveal_all: bool = False) -> InlineKeyboardMarkup:
-    mines_set = set(game["mines"])
-    revealed_set = set(game["revealed"])
-    rows: List[List[InlineKeyboardButton]] = []
+ᴅᴇғ ʙᴜɪʟᴅ_ᴍɪɴᴇs_ᴋᴇʏʙᴏᴀʀᴅ(ɢᴀᴍᴇ: ᴅɪᴄᴛ[sᴛʀ, ᴀɴʏ], ʀᴇᴠᴇᴀʟ_ᴀʟʟ: ʙᴏᴏʟ = ғᴀʟsᴇ) -> ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅᴍᴀʀᴋᴜᴘ:
+    ᴍɪɴᴇs_sᴇᴛ = sᴇᴛ(ɢᴀᴍᴇ["ᴍɪɴᴇs"])
+    ʀᴇᴠᴇᴀʟᴇᴅ_sᴇᴛ = sᴇᴛ(ɢᴀᴍᴇ["ʀᴇᴠᴇᴀʟᴇᴅ"])
+    ʀᴏᴡs: ʟɪsᴛ[ʟɪsᴛ[ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ]] = []
 
-    for r in range(5):
-        row_btns: List[InlineKeyboardButton] = []
-        for c in range(5):
-            idx = r * 5 + c
-            if idx in revealed_set:
-                label = "💎"
-            elif reveal_all:
-                label = "💣" if idx in mines_set else "🔹"
-            else:
-                label = "⬜"
-            row_btns.append(InlineKeyboardButton(label, callback_data=f"mines_pick:{idx}"))
-        rows.append(row_btns)
+    ғᴏʀ ʀ ɪɴ ʀᴀɴɢᴇ(𝟻):
+        ʀᴏᴡ_ʙᴛɴs: ʟɪsᴛ[ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ] = []
+        ғᴏʀ ᴄ ɪɴ ʀᴀɴɢᴇ(𝟻):
+            ɪᴅx = ʀ * 𝟻 + ᴄ
+            ɪғ ɪᴅx ɪɴ ʀᴇᴠᴇᴀʟᴇᴅ_sᴇᴛ:
+                ʟᴀʙᴇʟ = "💎"
+            ᴇʟɪғ ʀᴇᴠᴇᴀʟ_ᴀʟʟ:
+                ʟᴀʙᴇʟ = "💣" ɪғ ɪᴅx ɪɴ ᴍɪɴᴇs_sᴇᴛ ᴇʟsᴇ "🔹"
+            ᴇʟsᴇ:
+                ʟᴀʙᴇʟ = "⬜"
+            ʀᴏᴡ_ʙᴛɴs.ᴀᴘᴘᴇɴᴅ(ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ(ʟᴀʙᴇʟ, ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ=ғ"ᴍɪɴᴇs_ᴘɪᴄᴋ:{ɪᴅx}"))
+        ʀᴏᴡs.ᴀᴘᴘᴇɴᴅ(ʀᴏᴡ_ʙᴛɴs)
 
-    if not reveal_all:
-        mult = calc_mines_multiplier(len(revealed_set), game["mines_count"])
-        cashout_amt = int(game["bet"] * mult)
-        if len(revealed_set) >= 1:
-            rows.append([InlineKeyboardButton(f"💰 Cash Out (+{cashout_amt} coins)", callback_data="mines_cashout")])
-        else:
-            rows.append([InlineKeyboardButton("💎 Open a tile to unlock Cash Out", callback_data="mines_noop")])
-    else:
-        rows.append([InlineKeyboardButton("🔄 Play Mines Again", callback_data="menu_mines")])
+    ɪғ ɴᴏᴛ ʀᴇᴠᴇᴀʟ_ᴀʟʟ:
+        ᴍᴜʟᴛ = ᴄᴀʟᴄ_ᴍɪɴᴇs_ᴍᴜʟᴛɪᴘʟɪᴇʀ(ʟᴇɴ(ʀᴇᴠᴇᴀʟᴇᴅ_sᴇᴛ), ɢᴀᴍᴇ["ᴍɪɴᴇs_ᴄᴏᴜɴᴛ"])
+        ᴄᴀsʜᴏᴜᴛ_ᴀᴍᴛ = ɪɴᴛ(ɢᴀᴍᴇ["ʙᴇᴛ"] * ᴍᴜʟᴛ)
+        ɪғ ʟᴇɴ(ʀᴇᴠᴇᴀʟᴇᴅ_sᴇᴛ) >= 𝟷:
+            ʀᴏᴡs.ᴀᴘᴘᴇɴᴅ([ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ(ғ"💰 ᴄᴀsʜ ᴏᴜᴛ (+{ᴄᴀsʜᴏᴜᴛ_ᴀᴍᴛ} ᴄᴏɪɴs)", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ="ᴍɪɴᴇs_ᴄᴀsʜᴏᴜᴛ")])
+        ᴇʟsᴇ:
+            ʀᴏᴡs.ᴀᴘᴘᴇɴᴅ([ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ("💎 ᴏᴘᴇɴ ᴀ ᴛɪʟᴇ ᴛᴏ ᴜɴʟᴏᴄᴋ ᴄᴀsʜ ᴏᴜᴛ", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ="ᴍɪɴᴇs_ɴᴏᴏᴘ")])
+    ᴇʟsᴇ:
+        ʀᴏᴡs.ᴀᴘᴘᴇɴᴅ([ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ("🔄 ᴘʟᴀʏ ᴍɪɴᴇs ᴀɢᴀɪɴ", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ="ᴍᴇɴᴜ_ᴍɪɴᴇs")])
 
-    return InlineKeyboardMarkup(rows)
+    ʀᴇᴛᴜʀɴ ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅᴍᴀʀᴋᴜᴘ(ʀᴏᴡs)
 
 
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message:
-        return
-    user = update.effective_user
-    chat = update.effective_chat
-    db.register_chat(chat.id, chat.type, chat.title)
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_sᴛᴀʀᴛ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ:
+        ʀᴇᴛᴜʀɴ
+    ᴜsᴇʀ = ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ
+    ᴄʜᴀᴛ = ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ
+    ᴅʙ.ʀᴇɢɪsᴛᴇʀ_ᴄʜᴀᴛ(ᴄʜᴀᴛ.ɪᴅ, ᴄʜᴀᴛ.ᴛʏᴘᴇ, ᴄʜᴀᴛ.ᴛɪᴛʟᴇ)
 
-    ref_id: Optional[int] = None
-    if context.args:
-        arg0 = context.args[0].strip()
-        if arg0.startswith("ref_"):
-            try:
-                ref_id = int(arg0.replace("ref_", "", 1))
-            except ValueError:
-                ref_id = None
+    ʀᴇғ_ɪᴅ: ᴏᴘᴛɪᴏɴᴀʟ[ɪɴᴛ] = ɴᴏɴᴇ
+    ɪғ ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs:
+        ᴀʀɢ𝟶 = ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs[𝟶].sᴛʀɪᴘ()
+        ɪғ ᴀʀɢ𝟶.sᴛᴀʀᴛsᴡɪᴛʜ("ʀᴇғ_"):
+            ᴛʀʏ:
+                ʀᴇғ_ɪᴅ = ɪɴᴛ(ᴀʀɢ𝟶.ʀᴇᴘʟᴀᴄᴇ("ʀᴇғ_", "", 𝟷))
+            ᴇxᴄᴇᴘᴛ ᴠᴀʟᴜᴇᴇʀʀᴏʀ:
+                ʀᴇғ_ɪᴅ = ɴᴏɴᴇ
 
-    doc, is_new, bonus = db.ensure_user(user.id, user.first_name, user.username, referrer_id=ref_id)
-    if is_new and chat.type != ChatType.PRIVATE:
-        db.sync_group_score(chat.id, user.id, user.first_name, doc["coins"])
+    ᴅᴏᴄ, ɪs_ɴᴇᴡ, ʙᴏɴᴜs = ᴅʙ.ᴇɴsᴜʀᴇ_ᴜsᴇʀ(ᴜsᴇʀ.ɪᴅ, ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴜsᴇʀ.ᴜsᴇʀɴᴀᴍᴇ, ʀᴇғᴇʀʀᴇʀ_ɪᴅ=ʀᴇғ_ɪᴅ)
+    ɪғ ɪs_ɴᴇᴡ ᴀɴᴅ ᴄʜᴀᴛ.ᴛʏᴘᴇ != ᴄʜᴀᴛᴛʏᴘᴇ.ᴘʀɪᴠᴀᴛᴇ:
+        ᴅʙ.sʏɴᴄ_ɢʀᴏᴜᴘ_sᴄᴏʀᴇ(ᴄʜᴀᴛ.ɪᴅ, ᴜsᴇʀ.ɪᴅ, ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴅᴏᴄ["ᴄᴏɪɴs"])
 
-    bonus_note = f"\n🎉 <b>Referral Bonus:</b> +{bonus} coins mil gaye!" if (is_new and bonus > 0) else ""
-    text = (
-        f"👋 Swagat hai, <b>{user.first_name}</b>!\n"
-        f"🎮 <b>Group Arcade &amp; Solo Grind Bot</b>\n\n"
-        f"🪙 <b>Balance:</b> <code>{doc['coins']}</code> coins\n"
-        f"<i>Akele khelkar coins badhao aur group mein rank chamkao!</i>{bonus_note}\n\n"
-        f"<b>Quick Commands:</b>\n"
-        f"• /daily — 24hr free coins\n"
-        f"• /refill — 0 balance par rescue coins\n"
-        f"• /ref — Apna referral link\n"
-        f"• /gtop — Group leaderboard | /top — Global top\n"
-        f"• /mines &lt;bet&gt;, /flip &lt;bet&gt;, /dice &lt;bet&gt;, /slots &lt;bet&gt;"
+    ʙᴏɴᴜs_ɴᴏᴛᴇ = ғ"\ɴ🎉 <ʙ>ʀᴇғᴇʀʀᴀʟ ʙᴏɴᴜs:</ʙ> +{ʙᴏɴᴜs} ᴄᴏɪɴs ᴍɪʟ ɢᴀʏᴇ!" ɪғ (ɪs_ɴᴇᴡ ᴀɴᴅ ʙᴏɴᴜs > 𝟶) ᴇʟsᴇ ""
+    ᴛᴇxᴛ = (
+        ғ"👋 sᴡᴀɢᴀᴛ ʜᴀɪ, <ʙ>{ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ}</ʙ>!\ɴ"
+        ғ"🎮 <ʙ>ɢʀᴏᴜᴘ ᴀʀᴄᴀᴅᴇ &ᴀᴍᴘ; sᴏʟᴏ ɢʀɪɴᴅ ʙᴏᴛ</ʙ>\ɴ\ɴ"
+        ғ"🪙 <ʙ>ʙᴀʟᴀɴᴄᴇ:</ʙ> <ᴄᴏᴅᴇ>{ᴅᴏᴄ['ᴄᴏɪɴs']}</ᴄᴏᴅᴇ> ᴄᴏɪɴs\ɴ"
+        ғ"<ɪ>ᴀᴋᴇʟᴇ ᴋʜᴇʟᴋᴀʀ ᴄᴏɪɴs ʙᴀᴅʜᴀᴏ ᴀᴜʀ ɢʀᴏᴜᴘ ᴍᴇɪɴ ʀᴀɴᴋ ᴄʜᴀᴍᴋᴀᴏ!</ɪ>{ʙᴏɴᴜs_ɴᴏᴛᴇ}\ɴ\ɴ"
+        ғ"<ʙ>ǫᴜɪᴄᴋ ᴄᴏᴍᴍᴀɴᴅs:</ʙ>\ɴ"
+        ғ"• /ᴅᴀɪʟʏ — 𝟸𝟺ʜʀ ғʀᴇᴇ ᴄᴏɪɴs\ɴ"
+        ғ"• /ʀᴇғɪʟʟ — 𝟶 ʙᴀʟᴀɴᴄᴇ ᴘᴀʀ ʀᴇsᴄᴜᴇ ᴄᴏɪɴs\ɴ"
+        ғ"• /ʀᴇғ — ᴀᴘɴᴀ ʀᴇғᴇʀʀᴀʟ ʟɪɴᴋ\ɴ"
+        ғ"• /ɢᴛᴏᴘ — ɢʀᴏᴜᴘ ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ | /ᴛᴏᴘ — ɢʟᴏʙᴀʟ ᴛᴏᴘ\ɴ"
+        ғ"• /ᴍɪɴᴇs &ʟᴛ;ʙᴇᴛ&ɢᴛ;, /ғʟɪᴘ &ʟᴛ;ʙᴇᴛ&ɢᴛ;, /ᴅɪᴄᴇ &ʟᴛ;ʙᴇᴛ&ɢᴛ;, /sʟᴏᴛs &ʟᴛ;ʙᴇᴛ&ɢᴛ;"
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=main_menu_keyboard())
+    ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ(ᴛᴇxᴛ, ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ, ʀᴇᴘʟʏ_ᴍᴀʀᴋᴜᴘ=ᴍᴀɪɴ_ᴍᴇɴᴜ_ᴋᴇʏʙᴏᴀʀᴅ())
 
 
-async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message:
-        return
-    text = (
-        "📖 <b>Kaise Khelein &amp; Coins Badhayein?</b>\n\n"
-        "<b>Solo Games:</b>\n"
-        "• <code>/mines 100</code> — 5x5 grid mein 💎 dhoondo, 💣 se bacho, Cash Out karo.\n"
-        "• <code>/flip 100</code> — Heads/Tails bet lagao.\n"
-        "• <code>/dice 100</code> — 🎲 roll par 4, 5, 6 aaya toh jeet!\n"
-        "• <code>/slots 100</code> — 🎰 spin par jackpot/win!\n\n"
-        "<b>Coins &amp; Ranks:</b>\n"
-        "• <code>/bal</code>, <code>/daily</code>, <code>/refill</code>, <code>/ref</code>, <code>/give</code>, <code>/gtop</code>, <code>/top</code>"
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_ʜᴇʟᴘ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ:
+        ʀᴇᴛᴜʀɴ
+    ᴛᴇxᴛ = (
+        "📖 <ʙ>ᴋᴀɪsᴇ ᴋʜᴇʟᴇɪɴ &ᴀᴍᴘ; ᴄᴏɪɴs ʙᴀᴅʜᴀʏᴇɪɴ?</ʙ>\ɴ\ɴ"
+        "<ʙ>sᴏʟᴏ ɢᴀᴍᴇs:</ʙ>\ɴ"
+        "• <ᴄᴏᴅᴇ>/ᴍɪɴᴇs 𝟷𝟶𝟶</ᴄᴏᴅᴇ> — 𝟻x𝟻 ɢʀɪᴅ ᴍᴇɪɴ 💎 ᴅʜᴏᴏɴᴅᴏ, 💣 sᴇ ʙᴀᴄʜᴏ, ᴄᴀsʜ ᴏᴜᴛ ᴋᴀʀᴏ.\ɴ"
+        "• <ᴄᴏᴅᴇ>/ғʟɪᴘ 𝟷𝟶𝟶</ᴄᴏᴅᴇ> — ʜᴇᴀᴅs/ᴛᴀɪʟs ʙᴇᴛ ʟᴀɢᴀᴏ.\ɴ"
+        "• <ᴄᴏᴅᴇ>/ᴅɪᴄᴇ 𝟷𝟶𝟶</ᴄᴏᴅᴇ> — 🎲 ʀᴏʟʟ ᴘᴀʀ 𝟺, 𝟻, 𝟼 ᴀᴀʏᴀ ᴛᴏʜ ᴊᴇᴇᴛ!\ɴ"
+        "• <ᴄᴏᴅᴇ>/sʟᴏᴛs 𝟷𝟶𝟶</ᴄᴏᴅᴇ> — 🎰 sᴘɪɴ ᴘᴀʀ ᴊᴀᴄᴋᴘᴏᴛ/ᴡɪɴ!\ɴ\ɴ"
+        "<ʙ>ᴄᴏɪɴs &ᴀᴍᴘ; ʀᴀɴᴋs:</ʙ>\ɴ"
+        "• <ᴄᴏᴅᴇ>/ʙᴀʟ</ᴄᴏᴅᴇ>, <ᴄᴏᴅᴇ>/ᴅᴀɪʟʏ</ᴄᴏᴅᴇ>, <ᴄᴏᴅᴇ>/ʀᴇғɪʟʟ</ᴄᴏᴅᴇ>, <ᴄᴏᴅᴇ>/ʀᴇғ</ᴄᴏᴅᴇ>, <ᴄᴏᴅᴇ>/ɢɪᴠᴇ</ᴄᴏᴅᴇ>, <ᴄᴏᴅᴇ>/ɢᴛᴏᴘ</ᴄᴏᴅᴇ>, <ᴄᴏᴅᴇ>/ᴛᴏᴘ</ᴄᴏᴅᴇ>"
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ(ᴛᴇxᴛ, ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
 
 
-async def cmd_bal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message:
-        return
-    user = update.effective_user
-    db.register_chat(update.effective_chat.id, update.effective_chat.type, update.effective_chat.title)
-    doc, _, _ = db.ensure_user(user.id, user.first_name, user.username)
-    played = doc.get("games_played", 0)
-    won = doc.get("games_won", 0)
-    win_rate = int((won / played) * 100) if played > 0 else 0
-    text = (
-        f"👤 <b>{user.first_name}</b> ka Profile\n"
-        f"🪙 <b>Coins:</b> <code>{doc['coins']}</code>\n"
-        f"🎮 <b>Played:</b> <code>{played}</code> | <b>Wins:</b> <code>{won}</code> ({win_rate}%)\n"
-        f"🤝 <b>Referrals:</b> <code>{doc.get('referrals', 0)}</code>"
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_ʙᴀʟ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ:
+        ʀᴇᴛᴜʀɴ
+    ᴜsᴇʀ = ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ
+    ᴅʙ.ʀᴇɢɪsᴛᴇʀ_ᴄʜᴀᴛ(ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ.ɪᴅ, ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ.ᴛʏᴘᴇ, ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ.ᴛɪᴛʟᴇ)
+    ᴅᴏᴄ, _, _ = ᴅʙ.ᴇɴsᴜʀᴇ_ᴜsᴇʀ(ᴜsᴇʀ.ɪᴅ, ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴜsᴇʀ.ᴜsᴇʀɴᴀᴍᴇ)
+    ᴘʟᴀʏᴇᴅ = ᴅᴏᴄ.ɢᴇᴛ("ɢᴀᴍᴇs_ᴘʟᴀʏᴇᴅ", 𝟶)
+    ᴡᴏɴ = ᴅᴏᴄ.ɢᴇᴛ("ɢᴀᴍᴇs_ᴡᴏɴ", 𝟶)
+    ᴡɪɴ_ʀᴀᴛᴇ = ɪɴᴛ((ᴡᴏɴ / ᴘʟᴀʏᴇᴅ) * 𝟷𝟶𝟶) ɪғ ᴘʟᴀʏᴇᴅ > 𝟶 ᴇʟsᴇ 𝟶
+    ᴛᴇxᴛ = (
+        ғ"👤 <ʙ>{ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ}</ʙ> ᴋᴀ ᴘʀᴏғɪʟᴇ\ɴ"
+        ғ"🪙 <ʙ>ᴄᴏɪɴs:</ʙ> <ᴄᴏᴅᴇ>{ᴅᴏᴄ['ᴄᴏɪɴs']}</ᴄᴏᴅᴇ>\ɴ"
+        ғ"🎮 <ʙ>ᴘʟᴀʏᴇᴅ:</ʙ> <ᴄᴏᴅᴇ>{ᴘʟᴀʏᴇᴅ}</ᴄᴏᴅᴇ> | <ʙ>ᴡɪɴs:</ʙ> <ᴄᴏᴅᴇ>{ᴡᴏɴ}</ᴄᴏᴅᴇ> ({ᴡɪɴ_ʀᴀᴛᴇ}%)\ɴ"
+        ғ"🤝 <ʙ>ʀᴇғᴇʀʀᴀʟs:</ʙ> <ᴄᴏᴅᴇ>{ᴅᴏᴄ.ɢᴇᴛ('ʀᴇғᴇʀʀᴀʟs', 𝟶)}</ᴄᴏᴅᴇ>"
     )
-    await update.message.reply_text(text, parse_mode=ParseMode.HTML)
+    ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ(ᴛᴇxᴛ, ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
 
 
-async def _handle_daily_logic(user_id: int, name: str, username: Optional[str], chat_id: int) -> str:
-    doc, _, _ = db.ensure_user(user_id, name, username)
-    now = time.time()
-    elapsed = now - float(doc.get("last_daily", 0.0))
-    if elapsed < DAILY_COOLDOWN_SEC:
-        return f"⏳ Bhai abhi daily coins le chuke ho! Agla claim <b>{fmt_duration(DAILY_COOLDOWN_SEC - elapsed)}</b> baad milega."
-    db.update_cooldown(user_id, "last_daily", now, add_coins=DAILY_REWARD)
-    db.sync_group_score(chat_id, user_id, name, DAILY_REWARD)
-    line = random.choice(DAILY_DIALOGUES).format(amt=DAILY_REWARD)
-    return f"🎁 <b>Daily Reward</b>\n{line}\n\n🪙 <b>Naya Balance:</b> <code>{doc['coins'] + DAILY_REWARD}</code> coins"
+ᴀsʏɴᴄ ᴅᴇғ _ʜᴀɴᴅʟᴇ_ᴅᴀɪʟʏ_ʟᴏɢɪᴄ(ᴜsᴇʀ_ɪᴅ: ɪɴᴛ, ɴᴀᴍᴇ: sᴛʀ, ᴜsᴇʀɴᴀᴍᴇ: ᴏᴘᴛɪᴏɴᴀʟ[sᴛʀ], ᴄʜᴀᴛ_ɪᴅ: ɪɴᴛ) -> sᴛʀ:
+    ᴅᴏᴄ, _, _ = ᴅʙ.ᴇɴsᴜʀᴇ_ᴜsᴇʀ(ᴜsᴇʀ_ɪᴅ, ɴᴀᴍᴇ, ᴜsᴇʀɴᴀᴍᴇ)
+    ɴᴏᴡ = ᴛɪᴍᴇ.ᴛɪᴍᴇ()
+    ᴇʟᴀᴘsᴇᴅ = ɴᴏᴡ - ғʟᴏᴀᴛ(ᴅᴏᴄ.ɢᴇᴛ("ʟᴀsᴛ_ᴅᴀɪʟʏ", 𝟶.𝟶))
+    ɪғ ᴇʟᴀᴘsᴇᴅ < ᴅᴀɪʟʏ_ᴄᴏᴏʟᴅᴏᴡɴ_sᴇᴄ:
+        ʀᴇᴛᴜʀɴ ғ"⏳ ʙʜᴀɪ ᴀʙʜɪ ᴅᴀɪʟʏ ᴄᴏɪɴs ʟᴇ ᴄʜᴜᴋᴇ ʜᴏ! ᴀɢʟᴀ ᴄʟᴀɪᴍ <ʙ>{ғᴍᴛ_ᴅᴜʀᴀᴛɪᴏɴ(ᴅᴀɪʟʏ_ᴄᴏᴏʟᴅᴏᴡɴ_sᴇᴄ - ᴇʟᴀᴘsᴇᴅ)}</ʙ> ʙᴀᴀᴅ ᴍɪʟᴇɢᴀ."
+    ᴅʙ.ᴜᴘᴅᴀᴛᴇ_ᴄᴏᴏʟᴅᴏᴡɴ(ᴜsᴇʀ_ɪᴅ, "ʟᴀsᴛ_ᴅᴀɪʟʏ", ɴᴏᴡ, ᴀᴅᴅ_ᴄᴏɪɴs=ᴅᴀɪʟʏ_ʀᴇᴡᴀʀᴅ)
+    ᴅʙ.sʏɴᴄ_ɢʀᴏᴜᴘ_sᴄᴏʀᴇ(ᴄʜᴀᴛ_ɪᴅ, ᴜsᴇʀ_ɪᴅ, ɴᴀᴍᴇ, ᴅᴀɪʟʏ_ʀᴇᴡᴀʀᴅ)
+    ʟɪɴᴇ = ʀᴀɴᴅᴏᴍ.ᴄʜᴏɪᴄᴇ(ᴅᴀɪʟʏ_ᴅɪᴀʟᴏɢᴜᴇs).ғᴏʀᴍᴀᴛ(ᴀᴍᴛ=ᴅᴀɪʟʏ_ʀᴇᴡᴀʀᴅ)
+    ʀᴇᴛᴜʀɴ ғ"🎁 <ʙ>ᴅᴀɪʟʏ ʀᴇᴡᴀʀᴅ</ʙ>\ɴ{ʟɪɴᴇ}\ɴ\ɴ🪙 <ʙ>ɴᴀʏᴀ ʙᴀʟᴀɴᴄᴇ:</ʙ> <ᴄᴏᴅᴇ>{ᴅᴏᴄ['ᴄᴏɪɴs'] + ᴅᴀɪʟʏ_ʀᴇᴡᴀʀᴅ}</ᴄᴏᴅᴇ> ᴄᴏɪɴs"
 
 
-async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message:
-        return
-    u, c = update.effective_user, update.effective_chat
-    db.register_chat(c.id, c.type, c.title)
-    await update.message.reply_text(await _handle_daily_logic(u.id, u.first_name, u.username, c.id), parse_mode=ParseMode.HTML)
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_ᴅᴀɪʟʏ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ:
+        ʀᴇᴛᴜʀɴ
+    ᴜ, ᴄ = ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ, ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ
+    ᴅʙ.ʀᴇɢɪsᴛᴇʀ_ᴄʜᴀᴛ(ᴄ.ɪᴅ, ᴄ.ᴛʏᴘᴇ, ᴄ.ᴛɪᴛʟᴇ)
+    ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ(ᴀᴡᴀɪᴛ _ʜᴀɴᴅʟᴇ_ᴅᴀɪʟʏ_ʟᴏɢɪᴄ(ᴜ.ɪᴅ, ᴜ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴜ.ᴜsᴇʀɴᴀᴍᴇ, ᴄ.ɪᴅ), ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
 
 
-async def _handle_refill_logic(user_id: int, name: str, username: Optional[str], chat_id: int) -> str:
-    doc, _, _ = db.ensure_user(user_id, name, username)
-    if doc["coins"] > 0:
-        return f"😏 Tumhare paas abhi <code>{doc['coins']}</code> coins hain! Refill sirf <b>0 coins</b> hone par milta hai."
-    now = time.time()
-    elapsed = now - float(doc.get("last_refill", 0.0))
-    if elapsed < REFILL_COOLDOWN_SEC:
-        return f"⏳ Free refill cooldown chal raha hai! <b>{fmt_duration(REFILL_COOLDOWN_SEC - elapsed)}</b> baad try karo."
-    db.update_cooldown(user_id, "last_refill", now, add_coins=REFILL_AMOUNT)
-    db.sync_group_score(chat_id, user_id, name, REFILL_AMOUNT)
-    line = random.choice(REFILL_DIALOGUES).format(amt=REFILL_AMOUNT)
-    return f"🆘 <b>Free Refill</b>\n{line}\n\n🪙 <b>Balance:</b> <code>{REFILL_AMOUNT}</code> coins"
+ᴀsʏɴᴄ ᴅᴇғ _ʜᴀɴᴅʟᴇ_ʀᴇғɪʟʟ_ʟᴏɢɪᴄ(ᴜsᴇʀ_ɪᴅ: ɪɴᴛ, ɴᴀᴍᴇ: sᴛʀ, ᴜsᴇʀɴᴀᴍᴇ: ᴏᴘᴛɪᴏɴᴀʟ[sᴛʀ], ᴄʜᴀᴛ_ɪᴅ: ɪɴᴛ) -> sᴛʀ:
+    ᴅᴏᴄ, _, _ = ᴅʙ.ᴇɴsᴜʀᴇ_ᴜsᴇʀ(ᴜsᴇʀ_ɪᴅ, ɴᴀᴍᴇ, ᴜsᴇʀɴᴀᴍᴇ)
+    ɪғ ᴅᴏᴄ["ᴄᴏɪɴs"] > 𝟶:
+        ʀᴇᴛᴜʀɴ ғ"😏 ᴛᴜᴍʜᴀʀᴇ ᴘᴀᴀs ᴀʙʜɪ <ᴄᴏᴅᴇ>{ᴅᴏᴄ['ᴄᴏɪɴs']}</ᴄᴏᴅᴇ> ᴄᴏɪɴs ʜᴀɪɴ! ʀᴇғɪʟʟ sɪʀғ <ʙ>𝟶 ᴄᴏɪɴs</ʙ> ʜᴏɴᴇ ᴘᴀʀ ᴍɪʟᴛᴀ ʜᴀɪ."
+    ɴᴏᴡ = ᴛɪᴍᴇ.ᴛɪᴍᴇ()
+    ᴇʟᴀᴘsᴇᴅ = ɴᴏᴡ - ғʟᴏᴀᴛ(ᴅᴏᴄ.ɢᴇᴛ("ʟᴀsᴛ_ʀᴇғɪʟʟ", 𝟶.𝟶))
+    ɪғ ᴇʟᴀᴘsᴇᴅ < ʀᴇғɪʟʟ_ᴄᴏᴏʟᴅᴏᴡɴ_sᴇᴄ:
+        ʀᴇᴛᴜʀɴ ғ"⏳ ғʀᴇᴇ ʀᴇғɪʟʟ ᴄᴏᴏʟᴅᴏᴡɴ ᴄʜᴀʟ ʀᴀʜᴀ ʜᴀɪ! <ʙ>{ғᴍᴛ_ᴅᴜʀᴀᴛɪᴏɴ(ʀᴇғɪʟʟ_ᴄᴏᴏʟᴅᴏᴡɴ_sᴇᴄ - ᴇʟᴀᴘsᴇᴅ)}</ʙ> ʙᴀᴀᴅ ᴛʀʏ ᴋᴀʀᴏ."
+    ᴅʙ.ᴜᴘᴅᴀᴛᴇ_ᴄᴏᴏʟᴅᴏᴡɴ(ᴜsᴇʀ_ɪᴅ, "ʟᴀsᴛ_ʀᴇғɪʟʟ", ɴᴏᴡ, ᴀᴅᴅ_ᴄᴏɪɴs=ʀᴇғɪʟʟ_ᴀᴍᴏᴜɴᴛ)
+    ᴅʙ.sʏɴᴄ_ɢʀᴏᴜᴘ_sᴄᴏʀᴇ(ᴄʜᴀᴛ_ɪᴅ, ᴜsᴇʀ_ɪᴅ, ɴᴀᴍᴇ, ʀᴇғɪʟʟ_ᴀᴍᴏᴜɴᴛ)
+    ʟɪɴᴇ = ʀᴀɴᴅᴏᴍ.ᴄʜᴏɪᴄᴇ(ʀᴇғɪʟʟ_ᴅɪᴀʟᴏɢᴜᴇs).ғᴏʀᴍᴀᴛ(ᴀᴍᴛ=ʀᴇғɪʟʟ_ᴀᴍᴏᴜɴᴛ)
+    ʀᴇᴛᴜʀɴ ғ"🆘 <ʙ>ғʀᴇᴇ ʀᴇғɪʟʟ</ʙ>\ɴ{ʟɪɴᴇ}\ɴ\ɴ🪙 <ʙ>ʙᴀʟᴀɴᴄᴇ:</ʙ> <ᴄᴏᴅᴇ>{ʀᴇғɪʟʟ_ᴀᴍᴏᴜɴᴛ}</ᴄᴏᴅᴇ> ᴄᴏɪɴs"
 
 
-async def cmd_refill(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message:
-        return
-    u, c = update.effective_user, update.effective_chat
-    db.register_chat(c.id, c.type, c.title)
-    await update.message.reply_text(await _handle_refill_logic(u.id, u.first_name, u.username, c.id), parse_mode=ParseMode.HTML)
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_ʀᴇғɪʟʟ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ:
+        ʀᴇᴛᴜʀɴ
+    ᴜ, ᴄ = ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ, ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ
+    ᴅʙ.ʀᴇɢɪsᴛᴇʀ_ᴄʜᴀᴛ(ᴄ.ɪᴅ, ᴄ.ᴛʏᴘᴇ, ᴄ.ᴛɪᴛʟᴇ)
+    ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ(ᴀᴡᴀɪᴛ _ʜᴀɴᴅʟᴇ_ʀᴇғɪʟʟ_ʟᴏɢɪᴄ(ᴜ.ɪᴅ, ᴜ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴜ.ᴜsᴇʀɴᴀᴍᴇ, ᴄ.ɪᴅ), ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
 
 
-async def cmd_ref(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message:
-        return
-    u = update.effective_user
-    doc, _, _ = db.ensure_user(u.id, u.first_name, u.username)
-    link = f"https://t.me/{context.bot.username or 'YourBot'}?start=ref_{u.id}"
-    await update.message.reply_text(
-        f"🤝 <b>Referral Link:</b>\n<code>{link}</code>\n• Referrer: <b>+{REFERRAL_BONUS_REFERRER}</b> | New User: <b>+{REFERRAL_BONUS_USER}</b>\n• Total: <code>{doc.get('referrals', 0)}</code>",
-        parse_mode=ParseMode.HTML,
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_ʀᴇғ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ:
+        ʀᴇᴛᴜʀɴ
+    ᴜ = ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ
+    ᴅᴏᴄ, _, _ = ᴅʙ.ᴇɴsᴜʀᴇ_ᴜsᴇʀ(ᴜ.ɪᴅ, ᴜ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴜ.ᴜsᴇʀɴᴀᴍᴇ)
+    ʟɪɴᴋ = ғ"ʜᴛᴛᴘs://ᴛ.ᴍᴇ/{ᴄᴏɴᴛᴇxᴛ.ʙᴏᴛ.ᴜsᴇʀɴᴀᴍᴇ ᴏʀ 'ʏᴏᴜʀʙᴏᴛ'}?sᴛᴀʀᴛ=ʀᴇғ_{ᴜ.ɪᴅ}"
+    ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ(
+        ғ"🤝 <ʙ>ʀᴇғᴇʀʀᴀʟ ʟɪɴᴋ:</ʙ>\ɴ<ᴄᴏᴅᴇ>{ʟɪɴᴋ}</ᴄᴏᴅᴇ>\ɴ• ʀᴇғᴇʀʀᴇʀ: <ʙ>+{ʀᴇғᴇʀʀᴀʟ_ʙᴏɴᴜs_ʀᴇғᴇʀʀᴇʀ}</ʙ> | ɴᴇᴡ ᴜsᴇʀ: <ʙ>+{ʀᴇғᴇʀʀᴀʟ_ʙᴏɴᴜs_ᴜsᴇʀ}</ʙ>\ɴ• ᴛᴏᴛᴀʟ: <ᴄᴏᴅᴇ>{ᴅᴏᴄ.ɢᴇᴛ('ʀᴇғᴇʀʀᴀʟs', 𝟶)}</ᴄᴏᴅᴇ>",
+        ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ,
     )
 
 
-async def cmd_give(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message:
-        return
-    sender, chat = update.effective_user, update.effective_chat
-    db.register_chat(chat.id, chat.type, chat.title)
-    db.ensure_user(sender.id, sender.first_name, sender.username)
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_ɢɪᴠᴇ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ:
+        ʀᴇᴛᴜʀɴ
+    sᴇɴᴅᴇʀ, ᴄʜᴀᴛ = ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ, ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ
+    ᴅʙ.ʀᴇɢɪsᴛᴇʀ_ᴄʜᴀᴛ(ᴄʜᴀᴛ.ɪᴅ, ᴄʜᴀᴛ.ᴛʏᴘᴇ, ᴄʜᴀᴛ.ᴛɪᴛʟᴇ)
+    ᴅʙ.ᴇɴsᴜʀᴇ_ᴜsᴇʀ(sᴇɴᴅᴇʀ.ɪᴅ, sᴇɴᴅᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ, sᴇɴᴅᴇʀ.ᴜsᴇʀɴᴀᴍᴇ)
 
-    target_doc: Optional[Dict[str, Any]] = None
-    amount: Optional[int] = None
-    if update.message.reply_to_message and update.message.reply_to_message.from_user:
-        tu = update.message.reply_to_message.from_user
-        if not tu.is_bot:
-            target_doc, _, _ = db.ensure_user(tu.id, tu.first_name, tu.username)
-            if context.args:
-                try:
-                    amount = int(context.args[0])
-                except ValueError:
-                    amount = None
-    elif len(context.args) >= 2:
-        target_doc = db.find_user_by_username(context.args[0])
-        try:
-            amount = int(context.args[1])
-        except ValueError:
-            amount = None
+    ᴛᴀʀɢᴇᴛ_ᴅᴏᴄ: ᴏᴘᴛɪᴏɴᴀʟ[ᴅɪᴄᴛ[sᴛʀ, ᴀɴʏ]] = ɴᴏɴᴇ
+    ᴀᴍᴏᴜɴᴛ: ᴏᴘᴛɪᴏɴᴀʟ[ɪɴᴛ] = ɴᴏɴᴇ
+    ɪғ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴏ_ᴍᴇssᴀɢᴇ ᴀɴᴅ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴏ_ᴍᴇssᴀɢᴇ.ғʀᴏᴍ_ᴜsᴇʀ:
+        ᴛᴜ = ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴏ_ᴍᴇssᴀɢᴇ.ғʀᴏᴍ_ᴜsᴇʀ
+        ɪғ ɴᴏᴛ ᴛᴜ.ɪs_ʙᴏᴛ:
+            ᴛᴀʀɢᴇᴛ_ᴅᴏᴄ, _, _ = ᴅʙ.ᴇɴsᴜʀᴇ_ᴜsᴇʀ(ᴛᴜ.ɪᴅ, ᴛᴜ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴛᴜ.ᴜsᴇʀɴᴀᴍᴇ)
+            ɪғ ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs:
+                ᴛʀʏ:
+                    ᴀᴍᴏᴜɴᴛ = ɪɴᴛ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs[𝟶])
+                ᴇxᴄᴇᴘᴛ ᴠᴀʟᴜᴇᴇʀʀᴏʀ:
+                    ᴀᴍᴏᴜɴᴛ = ɴᴏɴᴇ
+    ᴇʟɪғ ʟᴇɴ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs) >= 𝟸:
+        ᴛᴀʀɢᴇᴛ_ᴅᴏᴄ = ᴅʙ.ғɪɴᴅ_ᴜsᴇʀ_ʙʏ_ᴜsᴇʀɴᴀᴍᴇ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs[𝟶])
+        ᴛʀʏ:
+            ᴀᴍᴏᴜɴᴛ = ɪɴᴛ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs[𝟷])
+        ᴇxᴄᴇᴘᴛ ᴠᴀʟᴜᴇᴇʀʀᴏʀ:
+            ᴀᴍᴏᴜɴᴛ = ɴᴏɴᴇ
 
-    if not target_doc or amount is None or amount <= 0 or target_doc["user_id"] == sender.id:
-        await update.message.reply_text("Use: Reply karke <code>/give 100</code> ya <code>/give @username 100</code>.", parse_mode=ParseMode.HTML)
-        return
-    if db.adjust_coins(sender.id, -amount, chat_id=chat.id, name=sender.first_name) is None:
-        await update.message.reply_text("❌ Itne coins nahi hain tumhare paas!")
-        return
-    db.adjust_coins(target_doc["user_id"], amount, chat_id=chat.id, name=target_doc.get("name", "Player"))
-    await update.message.reply_text(f"💸 <b>{sender.first_name}</b> ne <b>{target_doc.get('name', 'Player')}</b> ko <code>{amount}</code> coins bhej diye!", parse_mode=ParseMode.HTML)
-
-
-async def cmd_gtop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message or not update.effective_chat:
-        return
-    chat = update.effective_chat
-    db.register_chat(chat.id, chat.type, chat.title)
-    if chat.type == ChatType.PRIVATE:
-        await update.message.reply_text("ℹ️ Group leaderboard ke liye is command ko group mein chalayein, ya <code>/top</code> use karein.", parse_mode=ParseMode.HTML)
-        return
-    leaders = db.top_group(chat.id, limit=10)
-    if not leaders:
-        await update.message.reply_text("📉 Is group mein abhi koi score nahi hai.")
-        return
-    medals = ["🥇", "🥈", "🥉"]
-    lines = [f"🏆 <b>{chat.title or 'Group'} — Top 10</b>\n"]
-    for i, r in enumerate(leaders):
-        lines.append(f"{medals[i] if i < 3 else f'<b>{i+1}.</b>'} <b>{r.get('name', 'Player')}</b> — <code>{r.get('coins', 0)}</code> pts")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+    ɪғ ɴᴏᴛ ᴛᴀʀɢᴇᴛ_ᴅᴏᴄ ᴏʀ ᴀᴍᴏᴜɴᴛ ɪs ɴᴏɴᴇ ᴏʀ ᴀᴍᴏᴜɴᴛ <= 𝟶 ᴏʀ ᴛᴀʀɢᴇᴛ_ᴅᴏᴄ["ᴜsᴇʀ_ɪᴅ"] == sᴇɴᴅᴇʀ.ɪᴅ:
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("ᴜsᴇ: ʀᴇᴘʟʏ ᴋᴀʀᴋᴇ <ᴄᴏᴅᴇ>/ɢɪᴠᴇ 𝟷𝟶𝟶</ᴄᴏᴅᴇ> ʏᴀ <ᴄᴏᴅᴇ>/ɢɪᴠᴇ @ᴜsᴇʀɴᴀᴍᴇ 𝟷𝟶𝟶</ᴄᴏᴅᴇ>.", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+        ʀᴇᴛᴜʀɴ
+    ɪғ ᴅʙ.ᴀᴅᴊᴜsᴛ_ᴄᴏɪɴs(sᴇɴᴅᴇʀ.ɪᴅ, -ᴀᴍᴏᴜɴᴛ, ᴄʜᴀᴛ_ɪᴅ=ᴄʜᴀᴛ.ɪᴅ, ɴᴀᴍᴇ=sᴇɴᴅᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ) ɪs ɴᴏɴᴇ:
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("❌ ɪᴛɴᴇ ᴄᴏɪɴs ɴᴀʜɪ ʜᴀɪɴ ᴛᴜᴍʜᴀʀᴇ ᴘᴀᴀs!")
+        ʀᴇᴛᴜʀɴ
+    ᴅʙ.ᴀᴅᴊᴜsᴛ_ᴄᴏɪɴs(ᴛᴀʀɢᴇᴛ_ᴅᴏᴄ["ᴜsᴇʀ_ɪᴅ"], ᴀᴍᴏᴜɴᴛ, ᴄʜᴀᴛ_ɪᴅ=ᴄʜᴀᴛ.ɪᴅ, ɴᴀᴍᴇ=ᴛᴀʀɢᴇᴛ_ᴅᴏᴄ.ɢᴇᴛ("ɴᴀᴍᴇ", "ᴘʟᴀʏᴇʀ"))
+    ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ(ғ"💸 <ʙ>{sᴇɴᴅᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ}</ʙ> ɴᴇ <ʙ>{ᴛᴀʀɢᴇᴛ_ᴅᴏᴄ.ɢᴇᴛ('ɴᴀᴍᴇ', 'ᴘʟᴀʏᴇʀ')}</ʙ> ᴋᴏ <ᴄᴏᴅᴇ>{ᴀᴍᴏᴜɴᴛ}</ᴄᴏᴅᴇ> ᴄᴏɪɴs ʙʜᴇᴊ ᴅɪʏᴇ!", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
 
 
-async def cmd_top(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.message:
-        return
-    leaders = db.top_global(limit=10)
-    if not leaders:
-        await update.message.reply_text("📉 Global leaderboard khali hai.")
-        return
-    medals = ["🥇", "🥈", "🥉"]
-    lines = ["🌍 <b>Global Top 10</b>\n"]
-    for i, r in enumerate(leaders):
-        lines.append(f"{medals[i] if i < 3 else f'<b>{i+1}.</b>'} <b>{r.get('name', 'Player')}</b> — <code>{r.get('coins', 0)}</code> coins")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_ɢᴛᴏᴘ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ:
+        ʀᴇᴛᴜʀɴ
+    ᴄʜᴀᴛ = ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ
+    ᴅʙ.ʀᴇɢɪsᴛᴇʀ_ᴄʜᴀᴛ(ᴄʜᴀᴛ.ɪᴅ, ᴄʜᴀᴛ.ᴛʏᴘᴇ, ᴄʜᴀᴛ.ᴛɪᴛʟᴇ)
+    ɪғ ᴄʜᴀᴛ.ᴛʏᴘᴇ == ᴄʜᴀᴛᴛʏᴘᴇ.ᴘʀɪᴠᴀᴛᴇ:
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("ℹ️ ɢʀᴏᴜᴘ ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ ᴋᴇ ʟɪʏᴇ ɪs ᴄᴏᴍᴍᴀɴᴅ ᴋᴏ ɢʀᴏᴜᴘ ᴍᴇɪɴ ᴄʜᴀʟᴀʏᴇɪɴ, ʏᴀ <ᴄᴏᴅᴇ>/ᴛᴏᴘ</ᴄᴏᴅᴇ> ᴜsᴇ ᴋᴀʀᴇɪɴ.", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+        ʀᴇᴛᴜʀɴ
+    ʟᴇᴀᴅᴇʀs = ᴅʙ.ᴛᴏᴘ_ɢʀᴏᴜᴘ(ᴄʜᴀᴛ.ɪᴅ, ʟɪᴍɪᴛ=𝟷𝟶)
+    ɪғ ɴᴏᴛ ʟᴇᴀᴅᴇʀs:
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("📉 ɪs ɢʀᴏᴜᴘ ᴍᴇɪɴ ᴀʙʜɪ ᴋᴏɪ sᴄᴏʀᴇ ɴᴀʜɪ ʜᴀɪ.")
+        ʀᴇᴛᴜʀɴ
+    ᴍᴇᴅᴀʟs = ["🥇", "🥈", "🥉"]
+    ʟɪɴᴇs = [ғ"🏆 <ʙ>{ᴄʜᴀᴛ.ᴛɪᴛʟᴇ ᴏʀ 'ɢʀᴏᴜᴘ'} — ᴛᴏᴘ 𝟷𝟶</ʙ>\ɴ"]
+    ғᴏʀ ɪ, ʀ ɪɴ ᴇɴᴜᴍᴇʀᴀᴛᴇ(ʟᴇᴀᴅᴇʀs):
+        ʟɪɴᴇs.ᴀᴘᴘᴇɴᴅ(ғ"{ᴍᴇᴅᴀʟs[ɪ] ɪғ ɪ < 𝟹 ᴇʟsᴇ ғ'<ʙ>{ɪ+𝟷}.</ʙ>'} <ʙ>{ʀ.ɢᴇᴛ('ɴᴀᴍᴇ', 'ᴘʟᴀʏᴇʀ')}</ʙ> — <ᴄᴏᴅᴇ>{ʀ.ɢᴇᴛ('ᴄᴏɪɴs', 𝟶)}</ᴄᴏᴅᴇ> ᴘᴛs")
+    ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("\ɴ".ᴊᴏɪɴ(ʟɪɴᴇs), ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
 
 
-async def start_mines_game(chat_id: int, user_id: int, name: str, username: Optional[str], bet: int, send_fn) -> None:
-    if bet < 10:
-        await send_fn("⚠️ Minimum bet <b>10</b> coins hai.", parse_mode=ParseMode.HTML)
-        return
-    db.ensure_user(user_id, name, username)
-    if (chat_id, user_id) in ACTIVE_MINES:
-        await send_fn("⚠️ Tumhara ek Mines game pehle se chal raha hai!")
-        return
-    new_bal = db.adjust_coins(user_id, -bet, chat_id=chat_id, name=name, played_delta=1)
-    if new_bal is None:
-        await send_fn("❌ Balance kam hai! <code>/daily</code> ya <code>/refill</code> try karo.", parse_mode=ParseMode.HTML)
-        return
-    game = {
-        "user_id": user_id,
-        "name": name,
-        "bet": bet,
-        "mines_count": 4,
-        "mines": random.sample(range(25), 4),
-        "revealed": [],
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_ᴛᴏᴘ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ:
+        ʀᴇᴛᴜʀɴ
+    ʟᴇᴀᴅᴇʀs = ᴅʙ.ᴛᴏᴘ_ɢʟᴏʙᴀʟ(ʟɪᴍɪᴛ=𝟷𝟶)
+    ɪғ ɴᴏᴛ ʟᴇᴀᴅᴇʀs:
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("📉 ɢʟᴏʙᴀʟ ʟᴇᴀᴅᴇʀʙᴏᴀʀᴅ ᴋʜᴀʟɪ ʜᴀɪ.")
+        ʀᴇᴛᴜʀɴ
+    ᴍᴇᴅᴀʟs = ["🥇", "🥈", "🥉"]
+    ʟɪɴᴇs = ["🌍 <ʙ>ɢʟᴏʙᴀʟ ᴛᴏᴘ 𝟷𝟶</ʙ>\ɴ"]
+    ғᴏʀ ɪ, ʀ ɪɴ ᴇɴᴜᴍᴇʀᴀᴛᴇ(ʟᴇᴀᴅᴇʀs):
+        ʟɪɴᴇs.ᴀᴘᴘᴇɴᴅ(ғ"{ᴍᴇᴅᴀʟs[ɪ] ɪғ ɪ < 𝟹 ᴇʟsᴇ ғ'<ʙ>{ɪ+𝟷}.</ʙ>'} <ʙ>{ʀ.ɢᴇᴛ('ɴᴀᴍᴇ', 'ᴘʟᴀʏᴇʀ')}</ʙ> — <ᴄᴏᴅᴇ>{ʀ.ɢᴇᴛ('ᴄᴏɪɴs', 𝟶)}</ᴄᴏᴅᴇ> ᴄᴏɪɴs")
+    ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("\ɴ".ᴊᴏɪɴ(ʟɪɴᴇs), ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+
+
+ᴀsʏɴᴄ ᴅᴇғ sᴛᴀʀᴛ_ᴍɪɴᴇs_ɢᴀᴍᴇ(ᴄʜᴀᴛ_ɪᴅ: ɪɴᴛ, ᴜsᴇʀ_ɪᴅ: ɪɴᴛ, ɴᴀᴍᴇ: sᴛʀ, ᴜsᴇʀɴᴀᴍᴇ: ᴏᴘᴛɪᴏɴᴀʟ[sᴛʀ], ʙᴇᴛ: ɪɴᴛ, sᴇɴᴅ_ғɴ) -> ɴᴏɴᴇ:
+    ɪғ ʙᴇᴛ < 𝟷𝟶:
+        ᴀᴡᴀɪᴛ sᴇɴᴅ_ғɴ("⚠️ ᴍɪɴɪᴍᴜᴍ ʙᴇᴛ <ʙ>𝟷𝟶</ʙ> ᴄᴏɪɴs ʜᴀɪ.", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+        ʀᴇᴛᴜʀɴ
+    ᴅʙ.ᴇɴsᴜʀᴇ_ᴜsᴇʀ(ᴜsᴇʀ_ɪᴅ, ɴᴀᴍᴇ, ᴜsᴇʀɴᴀᴍᴇ)
+    ɪғ (ᴄʜᴀᴛ_ɪᴅ, ᴜsᴇʀ_ɪᴅ) ɪɴ ᴀᴄᴛɪᴠᴇ_ᴍɪɴᴇs:
+        ᴀᴡᴀɪᴛ sᴇɴᴅ_ғɴ("⚠️ ᴛᴜᴍʜᴀʀᴀ ᴇᴋ ᴍɪɴᴇs ɢᴀᴍᴇ ᴘᴇʜʟᴇ sᴇ ᴄʜᴀʟ ʀᴀʜᴀ ʜᴀɪ!")
+        ʀᴇᴛᴜʀɴ
+    ɴᴇᴡ_ʙᴀʟ = ᴅʙ.ᴀᴅᴊᴜsᴛ_ᴄᴏɪɴs(ᴜsᴇʀ_ɪᴅ, -ʙᴇᴛ, ᴄʜᴀᴛ_ɪᴅ=ᴄʜᴀᴛ_ɪᴅ, ɴᴀᴍᴇ=ɴᴀᴍᴇ, ᴘʟᴀʏᴇᴅ_ᴅᴇʟᴛᴀ=𝟷)
+    ɪғ ɴᴇᴡ_ʙᴀʟ ɪs ɴᴏɴᴇ:
+        ᴀᴡᴀɪᴛ sᴇɴᴅ_ғɴ("❌ ʙᴀʟᴀɴᴄᴇ ᴋᴀᴍ ʜᴀɪ! <ᴄᴏᴅᴇ>/ᴅᴀɪʟʏ</ᴄᴏᴅᴇ> ʏᴀ <ᴄᴏᴅᴇ>/ʀᴇғɪʟʟ</ᴄᴏᴅᴇ> ᴛʀʏ ᴋᴀʀᴏ.", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+        ʀᴇᴛᴜʀɴ
+    ɢᴀᴍᴇ = {
+        "ᴜsᴇʀ_ɪᴅ": ᴜsᴇʀ_ɪᴅ,
+        "ɴᴀᴍᴇ": ɴᴀᴍᴇ,
+        "ʙᴇᴛ": ʙᴇᴛ,
+        "ᴍɪɴᴇs_ᴄᴏᴜɴᴛ": 𝟺,
+        "ᴍɪɴᴇs": ʀᴀɴᴅᴏᴍ.sᴀᴍᴘʟᴇ(ʀᴀɴɢᴇ(𝟸𝟻), 𝟺),
+        "ʀᴇᴠᴇᴀʟᴇᴅ": [],
     }
-    ACTIVE_MINES[(chat_id, user_id)] = game
-    await send_fn(
-        f"💣 <b>Mines (Solo)</b> — <b>{name}</b>\n🪙 <b>Bet:</b> <code>{bet}</code> | <b>Bombs:</b> <code>4</code>\n🪙 <b>Balance:</b> <code>{new_bal}</code>",
-        parse_mode=ParseMode.HTML,
-        reply_markup=build_mines_keyboard(game, reveal_all=False),
+    ᴀᴄᴛɪᴠᴇ_ᴍɪɴᴇs[(ᴄʜᴀᴛ_ɪᴅ, ᴜsᴇʀ_ɪᴅ)] = ɢᴀᴍᴇ
+    ᴀᴡᴀɪᴛ sᴇɴᴅ_ғɴ(
+        ғ"💣 <ʙ>ᴍɪɴᴇs (sᴏʟᴏ)</ʙ> — <ʙ>{ɴᴀᴍᴇ}</ʙ>\ɴ🪙 <ʙ>ʙᴇᴛ:</ʙ> <ᴄᴏᴅᴇ>{ʙᴇᴛ}</ᴄᴏᴅᴇ> | <ʙ>ʙᴏᴍʙs:</ʙ> <ᴄᴏᴅᴇ>𝟺</ᴄᴏᴅᴇ>\ɴ🪙 <ʙ>ʙᴀʟᴀɴᴄᴇ:</ʙ> <ᴄᴏᴅᴇ>{ɴᴇᴡ_ʙᴀʟ}</ᴄᴏᴅᴇ>",
+        ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ,
+        ʀᴇᴘʟʏ_ᴍᴀʀᴋᴜᴘ=ʙᴜɪʟᴅ_ᴍɪɴᴇs_ᴋᴇʏʙᴏᴀʀᴅ(ɢᴀᴍᴇ, ʀᴇᴠᴇᴀʟ_ᴀʟʟ=ғᴀʟsᴇ),
     )
 
 
-async def cmd_mines(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message or not update.effective_chat:
-        return
-    u, c = update.effective_user, update.effective_chat
-    db.register_chat(c.id, c.type, c.title)
-    if not context.args:
-        await update.message.reply_text("💣 <b>Mines</b> — Bet chuno:", parse_mode=ParseMode.HTML, reply_markup=bet_keyboard("mines"))
-        return
-    try:
-        await start_mines_game(c.id, u.id, u.first_name, u.username, int(context.args[0]), update.message.reply_text)
-    except ValueError:
-        await update.message.reply_text("⚠️ Number daalo: <code>/mines 100</code>", parse_mode=ParseMode.HTML)
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_ᴍɪɴᴇs(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ:
+        ʀᴇᴛᴜʀɴ
+    ᴜ, ᴄ = ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ, ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ
+    ᴅʙ.ʀᴇɢɪsᴛᴇʀ_ᴄʜᴀᴛ(ᴄ.ɪᴅ, ᴄ.ᴛʏᴘᴇ, ᴄ.ᴛɪᴛʟᴇ)
+    ɪғ ɴᴏᴛ ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs:
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("💣 <ʙ>ᴍɪɴᴇs</ʙ> — ʙᴇᴛ ᴄʜᴜɴᴏ:", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ, ʀᴇᴘʟʏ_ᴍᴀʀᴋᴜᴘ=ʙᴇᴛ_ᴋᴇʏʙᴏᴀʀᴅ("ᴍɪɴᴇs"))
+        ʀᴇᴛᴜʀɴ
+    ᴛʀʏ:
+        ᴀᴡᴀɪᴛ sᴛᴀʀᴛ_ᴍɪɴᴇs_ɢᴀᴍᴇ(ᴄ.ɪᴅ, ᴜ.ɪᴅ, ᴜ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴜ.ᴜsᴇʀɴᴀᴍᴇ, ɪɴᴛ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs[𝟶]), ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ)
+    ᴇxᴄᴇᴘᴛ ᴠᴀʟᴜᴇᴇʀʀᴏʀ:
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("⚠️ ɴᴜᴍʙᴇʀ ᴅᴀᴀʟᴏ: <ᴄᴏᴅᴇ>/ᴍɪɴᴇs 𝟷𝟶𝟶</ᴄᴏᴅᴇ>", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
 
 
-async def play_coin_flip(chat_id: int, user_id: int, name: str, username: Optional[str], bet: int, choice: str, send_fn) -> None:
-    choice_clean = choice.lower() if choice.lower() in ("heads", "tails") else random.choice(["heads", "tails"])
-    if bet < 10:
-        await send_fn("⚠️ Minimum bet <b>10</b> coins hai.", parse_mode=ParseMode.HTML)
-        return
-    db.ensure_user(user_id, name, username)
-    bal_after_bet = db.adjust_coins(user_id, -bet, chat_id=chat_id, name=name, played_delta=1)
-    if bal_after_bet is None:
-        await send_fn("❌ Balance kam hai!", parse_mode=ParseMode.HTML)
-        return
-    outcome = random.choice(["heads", "tails"])
-    if outcome == choice_clean:
-        payout = bet * 2
-        final_bal = db.adjust_coins(user_id, payout, chat_id=chat_id, name=name, won_delta=1)
-        status = f"🎉 <b>JEET GAYE!</b> ({outcome.upper()})\n{random.choice(COIN_WIN_DIALOGUES).format(payout=payout)}"
-    else:
-        final_bal = bal_after_bet
-        status = f"💀 <b>HAAR GAYE!</b> ({outcome.upper()})\n{random.choice(COIN_LOSS_DIALOGUES).format(bet=bet)}"
-    await send_fn(f"🪙 <b>Coin Flip</b> — <b>{name}</b>\n{status}\n🪙 <b>Balance:</b> <code>{final_bal}</code>", parse_mode=ParseMode.HTML)
+ᴀsʏɴᴄ ᴅᴇғ ᴘʟᴀʏ_ᴄᴏɪɴ_ғʟɪᴘ(ᴄʜᴀᴛ_ɪᴅ: ɪɴᴛ, ᴜsᴇʀ_ɪᴅ: ɪɴᴛ, ɴᴀᴍᴇ: sᴛʀ, ᴜsᴇʀɴᴀᴍᴇ: ᴏᴘᴛɪᴏɴᴀʟ[sᴛʀ], ʙᴇᴛ: ɪɴᴛ, ᴄʜᴏɪᴄᴇ: sᴛʀ, sᴇɴᴅ_ғɴ) -> ɴᴏɴᴇ:
+    ᴄʜᴏɪᴄᴇ_ᴄʟᴇᴀɴ = ᴄʜᴏɪᴄᴇ.ʟᴏᴡᴇʀ() ɪғ ᴄʜᴏɪᴄᴇ.ʟᴏᴡᴇʀ() ɪɴ ("ʜᴇᴀᴅs", "ᴛᴀɪʟs") ᴇʟsᴇ ʀᴀɴᴅᴏᴍ.ᴄʜᴏɪᴄᴇ(["ʜᴇᴀᴅs", "ᴛᴀɪʟs"])
+    ɪғ ʙᴇᴛ < 𝟷𝟶:
+        ᴀᴡᴀɪᴛ sᴇɴᴅ_ғɴ("⚠️ ᴍɪɴɪᴍᴜᴍ ʙᴇᴛ <ʙ>𝟷𝟶</ʙ> ᴄᴏɪɴs ʜᴀɪ.", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+        ʀᴇᴛᴜʀɴ
+    ᴅʙ.ᴇɴsᴜʀᴇ_ᴜsᴇʀ(ᴜsᴇʀ_ɪᴅ, ɴᴀᴍᴇ, ᴜsᴇʀɴᴀᴍᴇ)
+    ʙᴀʟ_ᴀғᴛᴇʀ_ʙᴇᴛ = ᴅʙ.ᴀᴅᴊᴜsᴛ_ᴄᴏɪɴs(ᴜsᴇʀ_ɪᴅ, -ʙᴇᴛ, ᴄʜᴀᴛ_ɪᴅ=ᴄʜᴀᴛ_ɪᴅ, ɴᴀᴍᴇ=ɴᴀᴍᴇ, ᴘʟᴀʏᴇᴅ_ᴅᴇʟᴛᴀ=𝟷)
+    ɪғ ʙᴀʟ_ᴀғᴛᴇʀ_ʙᴇᴛ ɪs ɴᴏɴᴇ:
+        ᴀᴡᴀɪᴛ sᴇɴᴅ_ғɴ("❌ ʙᴀʟᴀɴᴄᴇ ᴋᴀᴍ ʜᴀɪ!", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+        ʀᴇᴛᴜʀɴ
+    ᴏᴜᴛᴄᴏᴍᴇ = ʀᴀɴᴅᴏᴍ.ᴄʜᴏɪᴄᴇ(["ʜᴇᴀᴅs", "ᴛᴀɪʟs"])
+    ɪғ ᴏᴜᴛᴄᴏᴍᴇ == ᴄʜᴏɪᴄᴇ_ᴄʟᴇᴀɴ:
+        ᴘᴀʏᴏᴜᴛ = ʙᴇᴛ * 𝟸
+        ғɪɴᴀʟ_ʙᴀʟ = ᴅʙ.ᴀᴅᴊᴜsᴛ_ᴄᴏɪɴs(ᴜsᴇʀ_ɪᴅ, ᴘᴀʏᴏᴜᴛ, ᴄʜᴀᴛ_ɪᴅ=ᴄʜᴀᴛ_ɪᴅ, ɴᴀᴍᴇ=ɴᴀᴍᴇ, ᴡᴏɴ_ᴅᴇʟᴛᴀ=𝟷)
+        sᴛᴀᴛᴜs = ғ"🎉 <ʙ>ᴊᴇᴇᴛ ɢᴀʏᴇ!</ʙ> ({ᴏᴜᴛᴄᴏᴍᴇ.ᴜᴘᴘᴇʀ()})\ɴ{ʀᴀɴᴅᴏᴍ.ᴄʜᴏɪᴄᴇ(ᴄᴏɪɴ_ᴡɪɴ_ᴅɪᴀʟᴏɢᴜᴇs).ғᴏʀᴍᴀᴛ(ᴘᴀʏᴏᴜᴛ=ᴘᴀʏᴏᴜᴛ)}"
+    ᴇʟsᴇ:
+        ғɪɴᴀʟ_ʙᴀʟ = ʙᴀʟ_ᴀғᴛᴇʀ_ʙᴇᴛ
+        sᴛᴀᴛᴜs = ғ"💀 <ʙ>ʜᴀᴀʀ ɢᴀʏᴇ!</ʙ> ({ᴏᴜᴛᴄᴏᴍᴇ.ᴜᴘᴘᴇʀ()})\ɴ{ʀᴀɴᴅᴏᴍ.ᴄʜᴏɪᴄᴇ(ᴄᴏɪɴ_ʟᴏss_ᴅɪᴀʟᴏɢᴜᴇs).ғᴏʀᴍᴀᴛ(ʙᴇᴛ=ʙᴇᴛ)}"
+    ᴀᴡᴀɪᴛ sᴇɴᴅ_ғɴ(ғ"🪙 <ʙ>ᴄᴏɪɴ ғʟɪᴘ</ʙ> — <ʙ>{ɴᴀᴍᴇ}</ʙ>\ɴ{sᴛᴀᴛᴜs}\ɴ🪙 <ʙ>ʙᴀʟᴀɴᴄᴇ:</ʙ> <ᴄᴏᴅᴇ>{ғɪɴᴀʟ_ʙᴀʟ}</ᴄᴏᴅᴇ>", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
 
 
-async def cmd_flip(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message or not update.effective_chat:
-        return
-    u, c = update.effective_user, update.effective_chat
-    db.register_chat(c.id, c.type, c.title)
-    if not context.args:
-        await update.message.reply_text("🪙 <b>Coin Flip</b> — Bet chuno:", parse_mode=ParseMode.HTML, reply_markup=bet_keyboard("flip_pick"))
-        return
-    try:
-        bet = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("⚠️ Use: <code>/flip 100</code>", parse_mode=ParseMode.HTML)
-        return
-    side = context.args[1].lower() if len(context.args) > 1 else ""
-    if side in ("h", "heads", "t", "tails"):
-        await play_coin_flip(c.id, u.id, u.first_name, u.username, bet, "heads" if side.startswith("h") else "tails", update.message.reply_text)
-    else:
-        kb = InlineKeyboardMarkup([[
-            InlineKeyboardButton(f"👑 Heads ({bet})", callback_data=f"flip_go:{bet}:heads"),
-            InlineKeyboardButton(f"🦅 Tails ({bet})", callback_data=f"flip_go:{bet}:tails"),
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_ғʟɪᴘ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ:
+        ʀᴇᴛᴜʀɴ
+    ᴜ, ᴄ = ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ, ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ
+    ᴅʙ.ʀᴇɢɪsᴛᴇʀ_ᴄʜᴀᴛ(ᴄ.ɪᴅ, ᴄ.ᴛʏᴘᴇ, ᴄ.ᴛɪᴛʟᴇ)
+    ɪғ ɴᴏᴛ ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs:
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("🪙 <ʙ>ᴄᴏɪɴ ғʟɪᴘ</ʙ> — ʙᴇᴛ ᴄʜᴜɴᴏ:", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ, ʀᴇᴘʟʏ_ᴍᴀʀᴋᴜᴘ=ʙᴇᴛ_ᴋᴇʏʙᴏᴀʀᴅ("ғʟɪᴘ_ᴘɪᴄᴋ"))
+        ʀᴇᴛᴜʀɴ
+    ᴛʀʏ:
+        ʙᴇᴛ = ɪɴᴛ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs[𝟶])
+    ᴇxᴄᴇᴘᴛ ᴠᴀʟᴜᴇᴇʀʀᴏʀ:
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("⚠️ ᴜsᴇ: <ᴄᴏᴅᴇ>/ғʟɪᴘ 𝟷𝟶𝟶</ᴄᴏᴅᴇ>", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+        ʀᴇᴛᴜʀɴ
+    sɪᴅᴇ = ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs[𝟷].ʟᴏᴡᴇʀ() ɪғ ʟᴇɴ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs) > 𝟷 ᴇʟsᴇ ""
+    ɪғ sɪᴅᴇ ɪɴ ("ʜ", "ʜᴇᴀᴅs", "ᴛ", "ᴛᴀɪʟs"):
+        ᴀᴡᴀɪᴛ ᴘʟᴀʏ_ᴄᴏɪɴ_ғʟɪᴘ(ᴄ.ɪᴅ, ᴜ.ɪᴅ, ᴜ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴜ.ᴜsᴇʀɴᴀᴍᴇ, ʙᴇᴛ, "ʜᴇᴀᴅs" ɪғ sɪᴅᴇ.sᴛᴀʀᴛsᴡɪᴛʜ("ʜ") ᴇʟsᴇ "ᴛᴀɪʟs", ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ)
+    ᴇʟsᴇ:
+        ᴋʙ = ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅᴍᴀʀᴋᴜᴘ([[
+            ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ(ғ"👑 ʜᴇᴀᴅs ({ʙᴇᴛ})", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ=ғ"ғʟɪᴘ_ɢᴏ:{ʙᴇᴛ}:ʜᴇᴀᴅs"),
+            ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ(ғ"🦅 ᴛᴀɪʟs ({ʙᴇᴛ})", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ=ғ"ғʟɪᴘ_ɢᴏ:{ʙᴇᴛ}:ᴛᴀɪʟs"),
         ]])
-        await update.message.reply_text(f"🪙 <b>Coin Flip</b> ({bet}) — Heads ya Tails?", parse_mode=ParseMode.HTML, reply_markup=kb)
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ(ғ"🪙 <ʙ>ᴄᴏɪɴ ғʟɪᴘ</ʙ> ({ʙᴇᴛ}) — ʜᴇᴀᴅs ʏᴀ ᴛᴀɪʟs?", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ, ʀᴇᴘʟʏ_ᴍᴀʀᴋᴜᴘ=ᴋʙ)
 
 
-async def play_emoji_game(update: Update, context: ContextTypes.DEFAULT_TYPE, emoji_char: str, title: str, bet: int) -> None:
-    if not update.effective_user or not update.effective_chat:
-        return
-    u, c = update.effective_user, update.effective_chat
-    if bet < 10:
-        await context.bot.send_message(c.id, "⚠️ Minimum bet <b>10</b> coins hai.", parse_mode=ParseMode.HTML)
-        return
-    db.ensure_user(u.id, u.first_name, u.username)
-    bal_after_bet = db.adjust_coins(u.id, -bet, chat_id=c.id, name=u.first_name, played_delta=1)
-    if bal_after_bet is None:
-        await context.bot.send_message(c.id, "❌ Balance kam hai!", parse_mode=ParseMode.HTML)
-        return
-    dice_msg = await context.bot.send_dice(chat_id=c.id, emoji=emoji_char)
-    val = dice_msg.dice.value if dice_msg.dice else 0
-    await asyncio.sleep(3.2)
-    if emoji_char == "🎲":
-        won = val >= 4
-        mult = 2.5 if val == 6 else (1.8 if won else 0.0)
-    else:
-        won = val >= 43 or val in (1, 22, 43, 64)
-        mult = 4.0 if val == 64 else (2.0 if won else 0.0)
-    if won:
-        payout = int(bet * mult)
-        final_bal = db.adjust_coins(u.id, payout, chat_id=c.id, name=u.first_name, won_delta=1)
-        txt = f"🎉 <b>JEET GAYE!</b> (Val: <code>{val}</code> | {mult}x)\n{random.choice(EMOJI_WIN_DIALOGUES).format(payout=payout)}\n🪙 <b>Balance:</b> <code>{final_bal}</code>"
-    else:
-        txt = f"📉 <b>HAAR GAYE!</b> (Val: <code>{val}</code>)\n{random.choice(EMOJI_LOSS_DIALOGUES).format(bet=bet)}\n🪙 <b>Balance:</b> <code>{bal_after_bet}</code>"
-    await context.bot.send_message(c.id, f"{title} — <b>{u.first_name}</b>\n{txt}", parse_mode=ParseMode.HTML, reply_to_message_id=dice_msg.message_id)
+ᴀsʏɴᴄ ᴅᴇғ ᴘʟᴀʏ_ᴇᴍᴏᴊɪ_ɢᴀᴍᴇ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ, ᴇᴍᴏᴊɪ_ᴄʜᴀʀ: sᴛʀ, ᴛɪᴛʟᴇ: sᴛʀ, ʙᴇᴛ: ɪɴᴛ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ:
+        ʀᴇᴛᴜʀɴ
+    ᴜ, ᴄ = ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ, ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ
+    ɪғ ʙᴇᴛ < 𝟷𝟶:
+        ᴀᴡᴀɪᴛ ᴄᴏɴᴛᴇxᴛ.ʙᴏᴛ.sᴇɴᴅ_ᴍᴇssᴀɢᴇ(ᴄ.ɪᴅ, "⚠️ ᴍɪɴɪᴍᴜᴍ ʙᴇᴛ <ʙ>𝟷𝟶</ʙ> ᴄᴏɪɴs ʜᴀɪ.", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+        ʀᴇᴛᴜʀɴ
+    ᴅʙ.ᴇɴsᴜʀᴇ_ᴜsᴇʀ(ᴜ.ɪᴅ, ᴜ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴜ.ᴜsᴇʀɴᴀᴍᴇ)
+    ʙᴀʟ_ᴀғᴛᴇʀ_ʙᴇᴛ = ᴅʙ.ᴀᴅᴊᴜsᴛ_ᴄᴏɪɴs(ᴜ.ɪᴅ, -ʙᴇᴛ, ᴄʜᴀᴛ_ɪᴅ=ᴄ.ɪᴅ, ɴᴀᴍᴇ=ᴜ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴘʟᴀʏᴇᴅ_ᴅᴇʟᴛᴀ=𝟷)
+    ɪғ ʙᴀʟ_ᴀғᴛᴇʀ_ʙᴇᴛ ɪs ɴᴏɴᴇ:
+        ᴀᴡᴀɪᴛ ᴄᴏɴᴛᴇxᴛ.ʙᴏᴛ.sᴇɴᴅ_ᴍᴇssᴀɢᴇ(ᴄ.ɪᴅ, "❌ ʙᴀʟᴀɴᴄᴇ ᴋᴀᴍ ʜᴀɪ!", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+        ʀᴇᴛᴜʀɴ
+    ᴅɪᴄᴇ_ᴍsɢ = ᴀᴡᴀɪᴛ ᴄᴏɴᴛᴇxᴛ.ʙᴏᴛ.sᴇɴᴅ_ᴅɪᴄᴇ(ᴄʜᴀᴛ_ɪᴅ=ᴄ.ɪᴅ, ᴇᴍᴏᴊɪ=ᴇᴍᴏᴊɪ_ᴄʜᴀʀ)
+    ᴠᴀʟ = ᴅɪᴄᴇ_ᴍsɢ.ᴅɪᴄᴇ.ᴠᴀʟᴜᴇ ɪғ ᴅɪᴄᴇ_ᴍsɢ.ᴅɪᴄᴇ ᴇʟsᴇ 𝟶
+    ᴀᴡᴀɪᴛ ᴀsʏɴᴄɪᴏ.sʟᴇᴇᴘ(𝟹.𝟸)
+    ɪғ ᴇᴍᴏᴊɪ_ᴄʜᴀʀ == "🎲":
+        ᴡᴏɴ = ᴠᴀʟ >= 𝟺
+        ᴍᴜʟᴛ = 𝟸.𝟻 ɪғ ᴠᴀʟ == 𝟼 ᴇʟsᴇ (𝟷.𝟾 ɪғ ᴡᴏɴ ᴇʟsᴇ 𝟶.𝟶)
+    ᴇʟsᴇ:
+        ᴡᴏɴ = ᴠᴀʟ >= 𝟺𝟹 ᴏʀ ᴠᴀʟ ɪɴ (𝟷, 𝟸𝟸, 𝟺𝟹, 𝟼𝟺)
+        ᴍᴜʟᴛ = 𝟺.𝟶 ɪғ ᴠᴀʟ == 𝟼𝟺 ᴇʟsᴇ (𝟸.𝟶 ɪғ ᴡᴏɴ ᴇʟsᴇ 𝟶.𝟶)
+    ɪғ ᴡᴏɴ:
+        ᴘᴀʏᴏᴜᴛ = ɪɴᴛ(ʙᴇᴛ * ᴍᴜʟᴛ)
+        ғɪɴᴀʟ_ʙᴀʟ = ᴅʙ.ᴀᴅᴊᴜsᴛ_ᴄᴏɪɴs(ᴜ.ɪᴅ, ᴘᴀʏᴏᴜᴛ, ᴄʜᴀᴛ_ɪᴅ=ᴄ.ɪᴅ, ɴᴀᴍᴇ=ᴜ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴡᴏɴ_ᴅᴇʟᴛᴀ=𝟷)
+        ᴛxᴛ = ғ"🎉 <ʙ>ᴊᴇᴇᴛ ɢᴀʏᴇ!</ʙ> (ᴠᴀʟ: <ᴄᴏᴅᴇ>{ᴠᴀʟ}</ᴄᴏᴅᴇ> | {ᴍᴜʟᴛ}x)\ɴ{ʀᴀɴᴅᴏᴍ.ᴄʜᴏɪᴄᴇ(ᴇᴍᴏᴊɪ_ᴡɪɴ_ᴅɪᴀʟᴏɢᴜᴇs).ғᴏʀᴍᴀᴛ(ᴘᴀʏᴏᴜᴛ=ᴘᴀʏᴏᴜᴛ)}\ɴ🪙 <ʙ>ʙᴀʟᴀɴᴄᴇ:</ʙ> <ᴄᴏᴅᴇ>{ғɪɴᴀʟ_ʙᴀʟ}</ᴄᴏᴅᴇ>"
+    ᴇʟsᴇ:
+        ᴛxᴛ = ғ"📉 <ʙ>ʜᴀᴀʀ ɢᴀʏᴇ!</ʙ> (ᴠᴀʟ: <ᴄᴏᴅᴇ>{ᴠᴀʟ}</ᴄᴏᴅᴇ>)\ɴ{ʀᴀɴᴅᴏᴍ.ᴄʜᴏɪᴄᴇ(ᴇᴍᴏᴊɪ_ʟᴏss_ᴅɪᴀʟᴏɢᴜᴇs).ғᴏʀᴍᴀᴛ(ʙᴇᴛ=ʙᴇᴛ)}\ɴ🪙 <ʙ>ʙᴀʟᴀɴᴄᴇ:</ʙ> <ᴄᴏᴅᴇ>{ʙᴀʟ_ᴀғᴛᴇʀ_ʙᴇᴛ}</ᴄᴏᴅᴇ>"
+    ᴀᴡᴀɪᴛ ᴄᴏɴᴛᴇxᴛ.ʙᴏᴛ.sᴇɴᴅ_ᴍᴇssᴀɢᴇ(ᴄ.ɪᴅ, ғ"{ᴛɪᴛʟᴇ} — <ʙ>{ᴜ.ғɪʀsᴛ_ɴᴀᴍᴇ}</ʙ>\ɴ{ᴛxᴛ}", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ, ʀᴇᴘʟʏ_ᴛᴏ_ᴍᴇssᴀɢᴇ_ɪᴅ=ᴅɪᴄᴇ_ᴍsɢ.ᴍᴇssᴀɢᴇ_ɪᴅ)
 
 
-async def cmd_dice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message or not update.effective_chat:
-        return
-    u, c = update.effective_user, update.effective_chat
-    db.register_chat(c.id, c.type, c.title)
-    if not context.args:
-        await update.message.reply_text("🎲 <b>Dice Bet</b> — Amount chuno:", parse_mode=ParseMode.HTML, reply_markup=bet_keyboard("dice"))
-        return
-    try:
-        await play_emoji_game(update, context, "🎲", "🎲 <b>Dice Bet</b>", int(context.args[0]))
-    except ValueError:
-        await update.message.reply_text("⚠️ Use: <code>/dice 100</code>", parse_mode=ParseMode.HTML)
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_ᴅɪᴄᴇ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ:
+        ʀᴇᴛᴜʀɴ
+    ᴜ, ᴄ = ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ, ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ
+    ᴅʙ.ʀᴇɢɪsᴛᴇʀ_ᴄʜᴀᴛ(ᴄ.ɪᴅ, ᴄ.ᴛʏᴘᴇ, ᴄ.ᴛɪᴛʟᴇ)
+    ɪғ ɴᴏᴛ ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs:
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("🎲 <ʙ>ᴅɪᴄᴇ ʙᴇᴛ</ʙ> — ᴀᴍᴏᴜɴᴛ ᴄʜᴜɴᴏ:", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ, ʀᴇᴘʟʏ_ᴍᴀʀᴋᴜᴘ=ʙᴇᴛ_ᴋᴇʏʙᴏᴀʀᴅ("ᴅɪᴄᴇ"))
+        ʀᴇᴛᴜʀɴ
+    ᴛʀʏ:
+        ᴀᴡᴀɪᴛ ᴘʟᴀʏ_ᴇᴍᴏᴊɪ_ɢᴀᴍᴇ(ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ, "🎲", "🎲 <ʙ>ᴅɪᴄᴇ ʙᴇᴛ</ʙ>", ɪɴᴛ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs[𝟶]))
+    ᴇxᴄᴇᴘᴛ ᴠᴀʟᴜᴇᴇʀʀᴏʀ:
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("⚠️ ᴜsᴇ: <ᴄᴏᴅᴇ>/ᴅɪᴄᴇ 𝟷𝟶𝟶</ᴄᴏᴅᴇ>", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
 
 
-async def cmd_slots(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message or not update.effective_chat:
-        return
-    u, c = update.effective_user, update.effective_chat
-    db.register_chat(c.id, c.type, c.title)
-    if not context.args:
-        await update.message.reply_text("🎰 <b>Slots Bet</b> — Amount chuno:", parse_mode=ParseMode.HTML, reply_markup=bet_keyboard("slots"))
-        return
-    try:
-        await play_emoji_game(update, context, "🎰", "🎰 <b>Slots Bet</b>", int(context.args[0]))
-    except ValueError:
-        await update.message.reply_text("⚠️ Use: <code>/slots 100</code>", parse_mode=ParseMode.HTML)
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_sʟᴏᴛs(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ:
+        ʀᴇᴛᴜʀɴ
+    ᴜ, ᴄ = ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ, ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ
+    ᴅʙ.ʀᴇɢɪsᴛᴇʀ_ᴄʜᴀᴛ(ᴄ.ɪᴅ, ᴄ.ᴛʏᴘᴇ, ᴄ.ᴛɪᴛʟᴇ)
+    ɪғ ɴᴏᴛ ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs:
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("🎰 <ʙ>sʟᴏᴛs ʙᴇᴛ</ʙ> — ᴀᴍᴏᴜɴᴛ ᴄʜᴜɴᴏ:", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ, ʀᴇᴘʟʏ_ᴍᴀʀᴋᴜᴘ=ʙᴇᴛ_ᴋᴇʏʙᴏᴀʀᴅ("sʟᴏᴛs"))
+        ʀᴇᴛᴜʀɴ
+    ᴛʀʏ:
+        ᴀᴡᴀɪᴛ ᴘʟᴀʏ_ᴇᴍᴏᴊɪ_ɢᴀᴍᴇ(ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ, "🎰", "🎰 <ʙ>sʟᴏᴛs ʙᴇᴛ</ʙ>", ɪɴᴛ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs[𝟶]))
+    ᴇxᴄᴇᴘᴛ ᴠᴀʟᴜᴇᴇʀʀᴏʀ:
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("⚠️ ᴜsᴇ: <ᴄᴏᴅᴇ>/sʟᴏᴛs 𝟷𝟶𝟶</ᴄᴏᴅᴇ>", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
 
 
-async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message or not is_owner(update.effective_user.id):
-        return
-    st = db.stats()
-    await update.message.reply_text(
-        f"📊 <b>Stats</b>\n👥 Users: <code>{st['users']}</code> | 💬 Chats: <code>{st['chats']}</code> | 🪙 Coins: <code>{st['coins']}</code>",
-        parse_mode=ParseMode.HTML,
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_sᴛᴀᴛs(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ ᴏʀ ɴᴏᴛ ɪs_ᴏᴡɴᴇʀ(ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ.ɪᴅ):
+        ʀᴇᴛᴜʀɴ
+    sᴛ = ᴅʙ.sᴛᴀᴛs()
+    ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ(
+        ғ"📊 <ʙ>sᴛᴀᴛs</ʙ>\ɴ👥 ᴜsᴇʀs: <ᴄᴏᴅᴇ>{sᴛ['ᴜsᴇʀs']}</ᴄᴏᴅᴇ> | 💬 ᴄʜᴀᴛs: <ᴄᴏᴅᴇ>{sᴛ['ᴄʜᴀᴛs']}</ᴄᴏᴅᴇ> | 🪙 ᴄᴏɪɴs: <ᴄᴏᴅᴇ>{sᴛ['ᴄᴏɪɴs']}</ᴄᴏᴅᴇ>",
+        ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ,
     )
 
 
-async def cmd_addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message or not is_owner(update.effective_user.id):
-        return
-    if len(context.args) < 2:
-        return
-    new_bal = db.adjust_coins(int(context.args[0]), int(context.args[1]))
-    await update.message.reply_text(f"✅ Updated! Balance: <code>{new_bal}</code>", parse_mode=ParseMode.HTML)
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_ᴀᴅᴅᴄᴏɪɴs(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ ᴏʀ ɴᴏᴛ ɪs_ᴏᴡɴᴇʀ(ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ.ɪᴅ):
+        ʀᴇᴛᴜʀɴ
+    ɪғ ʟᴇɴ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs) < 𝟸:
+        ʀᴇᴛᴜʀɴ
+    ɴᴇᴡ_ʙᴀʟ = ᴅʙ.ᴀᴅᴊᴜsᴛ_ᴄᴏɪɴs(ɪɴᴛ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs[𝟶]), ɪɴᴛ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs[𝟷]))
+    ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ(ғ"✅ ᴜᴘᴅᴀᴛᴇᴅ! ʙᴀʟᴀɴᴄᴇ: <ᴄᴏᴅᴇ>{ɴᴇᴡ_ʙᴀʟ}</ᴄᴏᴅᴇ>", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
 
 
-async def cmd_setcoins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message or not is_owner(update.effective_user.id):
-        return
-    if len(context.args) < 2:
-        return
-    ok = db.set_coins(int(context.args[0]), int(context.args[1]))
-    await update.message.reply_text("✅ Coins set!" if ok else "⚠️ User not found.")
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_sᴇᴛᴄᴏɪɴs(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ ᴏʀ ɴᴏᴛ ɪs_ᴏᴡɴᴇʀ(ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ.ɪᴅ):
+        ʀᴇᴛᴜʀɴ
+    ɪғ ʟᴇɴ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs) < 𝟸:
+        ʀᴇᴛᴜʀɴ
+    ᴏᴋ = ᴅʙ.sᴇᴛ_ᴄᴏɪɴs(ɪɴᴛ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs[𝟶]), ɪɴᴛ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs[𝟷]))
+    ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("✅ ᴄᴏɪɴs sᴇᴛ!" ɪғ ᴏᴋ ᴇʟsᴇ "⚠️ ᴜsᴇʀ ɴᴏᴛ ғᴏᴜɴᴅ.")
 
 
-async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not update.effective_user or not update.message or not is_owner(update.effective_user.id):
-        return
-    reply_msg = update.message.reply_to_message
-    custom_text = " ".join(context.args).strip() if context.args else ""
-    if not reply_msg and not custom_text:
-        await update.message.reply_text("📣 Reply karke <code>/broadcast</code> likho ya <code>/broadcast &lt;msg&gt;</code>.", parse_mode=ParseMode.HTML)
-        return
-    targets = db.all_broadcast_targets()
-    status_msg = await update.message.reply_text(f"📡 Broadcasting to <code>{len(targets)}</code> chats...", parse_mode=ParseMode.HTML)
-    sent = failed = 0
-    for cid in targets:
-        try:
-            if reply_msg:
-                await context.bot.copy_message(cid, reply_msg.chat_id, reply_msg.message_id)
-            else:
-                await context.bot.send_message(cid, f"📢 <b>Announcement</b>\n\n{custom_text}", parse_mode=ParseMode.HTML)
-            sent += 1
-            await asyncio.sleep(0.06)
-        except (Forbidden, TelegramError):
-            failed += 1
-    await status_msg.edit_text(f"✅ Broadcast Done! Sent: <code>{sent}</code> | Failed: <code>{failed}</code>", parse_mode=ParseMode.HTML)
+ᴀsʏɴᴄ ᴅᴇғ ᴄᴍᴅ_ʙʀᴏᴀᴅᴄᴀsᴛ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ ᴏʀ ɴᴏᴛ ɪs_ᴏᴡɴᴇʀ(ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴜsᴇʀ.ɪᴅ):
+        ʀᴇᴛᴜʀɴ
+    ʀᴇᴘʟʏ_ᴍsɢ = ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴏ_ᴍᴇssᴀɢᴇ
+    ᴄᴜsᴛᴏᴍ_ᴛᴇxᴛ = " ".ᴊᴏɪɴ(ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs).sᴛʀɪᴘ() ɪғ ᴄᴏɴᴛᴇxᴛ.ᴀʀɢs ᴇʟsᴇ ""
+    ɪғ ɴᴏᴛ ʀᴇᴘʟʏ_ᴍsɢ ᴀɴᴅ ɴᴏᴛ ᴄᴜsᴛᴏᴍ_ᴛᴇxᴛ:
+        ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("📣 ʀᴇᴘʟʏ ᴋᴀʀᴋᴇ <ᴄᴏᴅᴇ>/ʙʀᴏᴀᴅᴄᴀsᴛ</ᴄᴏᴅᴇ> ʟɪᴋʜᴏ ʏᴀ <ᴄᴏᴅᴇ>/ʙʀᴏᴀᴅᴄᴀsᴛ &ʟᴛ;ᴍsɢ&ɢᴛ;</ᴄᴏᴅᴇ>.", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+        ʀᴇᴛᴜʀɴ
+    ᴛᴀʀɢᴇᴛs = ᴅʙ.ᴀʟʟ_ʙʀᴏᴀᴅᴄᴀsᴛ_ᴛᴀʀɢᴇᴛs()
+    sᴛᴀᴛᴜs_ᴍsɢ = ᴀᴡᴀɪᴛ ᴜᴘᴅᴀᴛᴇ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ(ғ"📡 ʙʀᴏᴀᴅᴄᴀsᴛɪɴɢ ᴛᴏ <ᴄᴏᴅᴇ>{ʟᴇɴ(ᴛᴀʀɢᴇᴛs)}</ᴄᴏᴅᴇ> ᴄʜᴀᴛs...", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+    sᴇɴᴛ = ғᴀɪʟᴇᴅ = 𝟶
+    ғᴏʀ ᴄɪᴅ ɪɴ ᴛᴀʀɢᴇᴛs:
+        ᴛʀʏ:
+            ɪғ ʀᴇᴘʟʏ_ᴍsɢ:
+                ᴀᴡᴀɪᴛ ᴄᴏɴᴛᴇxᴛ.ʙᴏᴛ.ᴄᴏᴘʏ_ᴍᴇssᴀɢᴇ(ᴄɪᴅ, ʀᴇᴘʟʏ_ᴍsɢ.ᴄʜᴀᴛ_ɪᴅ, ʀᴇᴘʟʏ_ᴍsɢ.ᴍᴇssᴀɢᴇ_ɪᴅ)
+            ᴇʟsᴇ:
+                ᴀᴡᴀɪᴛ ᴄᴏɴᴛᴇxᴛ.ʙᴏᴛ.sᴇɴᴅ_ᴍᴇssᴀɢᴇ(ᴄɪᴅ, ғ"📢 <ʙ>ᴀɴɴᴏᴜɴᴄᴇᴍᴇɴᴛ</ʙ>\ɴ\ɴ{ᴄᴜsᴛᴏᴍ_ᴛᴇxᴛ}", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+            sᴇɴᴛ += 𝟷
+            ᴀᴡᴀɪᴛ ᴀsʏɴᴄɪᴏ.sʟᴇᴇᴘ(𝟶.𝟶𝟼)
+        ᴇxᴄᴇᴘᴛ (ғᴏʀʙɪᴅᴅᴇɴ, ᴛᴇʟᴇɢʀᴀᴍᴇʀʀᴏʀ):
+            ғᴀɪʟᴇᴅ += 𝟷
+    ᴀᴡᴀɪᴛ sᴛᴀᴛᴜs_ᴍsɢ.ᴇᴅɪᴛ_ᴛᴇxᴛ(ғ"✅ ʙʀᴏᴀᴅᴄᴀsᴛ ᴅᴏɴᴇ! sᴇɴᴛ: <ᴄᴏᴅᴇ>{sᴇɴᴛ}</ᴄᴏᴅᴇ> | ғᴀɪʟᴇᴅ: <ᴄᴏᴅᴇ>{ғᴀɪʟᴇᴅ}</ᴄᴏᴅᴇ>", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
 
 
-async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    if not query or not query.from_user or not query.message:
-        return
-    user, chat, data = query.from_user, query.message.chat, query.data or ""
-    db.register_chat(chat.id, chat.type, chat.title)
-    db.ensure_user(user.id, user.first_name, user.username)
+ᴀsʏɴᴄ ᴅᴇғ ᴏɴ_ᴄᴀʟʟʙᴀᴄᴋ_ǫᴜᴇʀʏ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ǫᴜᴇʀʏ = ᴜᴘᴅᴀᴛᴇ.ᴄᴀʟʟʙᴀᴄᴋ_ǫᴜᴇʀʏ
+    ɪғ ɴᴏᴛ ǫᴜᴇʀʏ ᴏʀ ɴᴏᴛ ǫᴜᴇʀʏ.ғʀᴏᴍ_ᴜsᴇʀ ᴏʀ ɴᴏᴛ ǫᴜᴇʀʏ.ᴍᴇssᴀɢᴇ:
+        ʀᴇᴛᴜʀɴ
+    ᴜsᴇʀ, ᴄʜᴀᴛ, ᴅᴀᴛᴀ = ǫᴜᴇʀʏ.ғʀᴏᴍ_ᴜsᴇʀ, ǫᴜᴇʀʏ.ᴍᴇssᴀɢᴇ.ᴄʜᴀᴛ, ǫᴜᴇʀʏ.ᴅᴀᴛᴀ ᴏʀ ""
+    ᴅʙ.ʀᴇɢɪsᴛᴇʀ_ᴄʜᴀᴛ(ᴄʜᴀᴛ.ɪᴅ, ᴄʜᴀᴛ.ᴛʏᴘᴇ, ᴄʜᴀᴛ.ᴛɪᴛʟᴇ)
+    ᴅʙ.ᴇɴsᴜʀᴇ_ᴜsᴇʀ(ᴜsᴇʀ.ɪᴅ, ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴜsᴇʀ.ᴜsᴇʀɴᴀᴍᴇ)
 
-    if data == "mines_noop":
-        await query.answer("Pehle 1 tile kholo!")
-        return
-    if data == "menu_home":
-        await query.answer()
-        doc = db.get_user(user.id) or {"coins": 0}
-        await query.edit_message_text(f"🎮 <b>Group Arcade Bot</b>\n🪙 <b>Balance:</b> <code>{doc['coins']}</code>", parse_mode=ParseMode.HTML, reply_markup=main_menu_keyboard())
-        return
-    if data in ("menu_mines", "menu_flip", "menu_dice", "menu_slots"):
-        await query.answer()
-        m_map = {
-            "menu_mines": ("💣 <b>Mines</b> — Bet chuno:", "mines"),
-            "menu_flip": ("🪙 <b>Coin Flip</b> — Bet chuno:", "flip_pick"),
-            "menu_dice": ("🎲 <b>Dice Bet</b> — Bet chuno:", "dice"),
-            "menu_slots": ("🎰 <b>Slots Bet</b> — Bet chuno:", "slots"),
+    ɪғ ᴅᴀᴛᴀ == "ᴍɪɴᴇs_ɴᴏᴏᴘ":
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ("ᴘᴇʜʟᴇ 𝟷 ᴛɪʟᴇ ᴋʜᴏʟᴏ!")
+        ʀᴇᴛᴜʀɴ
+    ɪғ ᴅᴀᴛᴀ == "ᴍᴇɴᴜ_ʜᴏᴍᴇ":
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ()
+        ᴅᴏᴄ = ᴅʙ.ɢᴇᴛ_ᴜsᴇʀ(ᴜsᴇʀ.ɪᴅ) ᴏʀ {"ᴄᴏɪɴs": 𝟶}
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴇᴅɪᴛ_ᴍᴇssᴀɢᴇ_ᴛᴇxᴛ(ғ"🎮 <ʙ>ɢʀᴏᴜᴘ ᴀʀᴄᴀᴅᴇ ʙᴏᴛ</ʙ>\ɴ🪙 <ʙ>ʙᴀʟᴀɴᴄᴇ:</ʙ> <ᴄᴏᴅᴇ>{ᴅᴏᴄ['ᴄᴏɪɴs']}</ᴄᴏᴅᴇ>", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ, ʀᴇᴘʟʏ_ᴍᴀʀᴋᴜᴘ=ᴍᴀɪɴ_ᴍᴇɴᴜ_ᴋᴇʏʙᴏᴀʀᴅ())
+        ʀᴇᴛᴜʀɴ
+    ɪғ ᴅᴀᴛᴀ ɪɴ ("ᴍᴇɴᴜ_ᴍɪɴᴇs", "ᴍᴇɴᴜ_ғʟɪᴘ", "ᴍᴇɴᴜ_ᴅɪᴄᴇ", "ᴍᴇɴᴜ_sʟᴏᴛs"):
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ()
+        ᴍ_ᴍᴀᴘ = {
+            "ᴍᴇɴᴜ_ᴍɪɴᴇs": ("💣 <ʙ>ᴍɪɴᴇs</ʙ> — ʙᴇᴛ ᴄʜᴜɴᴏ:", "ᴍɪɴᴇs"),
+            "ᴍᴇɴᴜ_ғʟɪᴘ": ("🪙 <ʙ>ᴄᴏɪɴ ғʟɪᴘ</ʙ> — ʙᴇᴛ ᴄʜᴜɴᴏ:", "ғʟɪᴘ_ᴘɪᴄᴋ"),
+            "ᴍᴇɴᴜ_ᴅɪᴄᴇ": ("🎲 <ʙ>ᴅɪᴄᴇ ʙᴇᴛ</ʙ> — ʙᴇᴛ ᴄʜᴜɴᴏ:", "ᴅɪᴄᴇ"),
+            "ᴍᴇɴᴜ_sʟᴏᴛs": ("🎰 <ʙ>sʟᴏᴛs ʙᴇᴛ</ʙ> — ʙᴇᴛ ᴄʜᴜɴᴏ:", "sʟᴏᴛs"),
         }
-        txt, pref = m_map[data]
-        await query.edit_message_text(txt, parse_mode=ParseMode.HTML, reply_markup=bet_keyboard(pref))
-        return
-    if data == "act_daily":
-        await query.answer()
-        await query.message.reply_text(await _handle_daily_logic(user.id, user.first_name, user.username, chat.id), parse_mode=ParseMode.HTML)
-        return
-    if data == "act_refill":
-        await query.answer()
-        await query.message.reply_text(await _handle_refill_logic(user.id, user.first_name, user.username, chat.id), parse_mode=ParseMode.HTML)
-        return
-    if data == "act_profile":
-        await query.answer()
-        doc = db.get_user(user.id) or {}
-        await query.message.reply_text(f"👤 <b>{user.first_name}</b> | 🪙 <code>{doc.get('coins', 0)}</code> | Wins: <code>{doc.get('games_won', 0)}</code>", parse_mode=ParseMode.HTML)
-        return
-    if data == "act_top":
-        await query.answer()
-        lines = ["🏆 <b>Global Top 5</b>"] + [f"{i}. <b>{r.get('name', 'Player')}</b> — <code>{r.get('coins', 0)}</code>" for i, r in enumerate(db.top_global(5), 1)]
-        await query.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
-        return
-    if data.startswith("bet:"):
-        _, game_type, bet_str = data.split(":", 2)
-        bet = int(bet_str)
-        await query.answer()
-        if game_type == "mines":
-            await start_mines_game(chat.id, user.id, user.first_name, user.username, bet, query.message.reply_text)
-        elif game_type == "flip_pick":
-            kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton(f"👑 Heads ({bet})", callback_data=f"flip_go:{bet}:heads"), InlineKeyboardButton(f"🦅 Tails ({bet})", callback_data=f"flip_go:{bet}:tails")],
-                [InlineKeyboardButton("⬅️ Back", callback_data="menu_flip")],
+        ᴛxᴛ, ᴘʀᴇғ = ᴍ_ᴍᴀᴘ[ᴅᴀᴛᴀ]
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴇᴅɪᴛ_ᴍᴇssᴀɢᴇ_ᴛᴇxᴛ(ᴛxᴛ, ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ, ʀᴇᴘʟʏ_ᴍᴀʀᴋᴜᴘ=ʙᴇᴛ_ᴋᴇʏʙᴏᴀʀᴅ(ᴘʀᴇғ))
+        ʀᴇᴛᴜʀɴ
+    ɪғ ᴅᴀᴛᴀ == "ᴀᴄᴛ_ᴅᴀɪʟʏ":
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ()
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ(ᴀᴡᴀɪᴛ _ʜᴀɴᴅʟᴇ_ᴅᴀɪʟʏ_ʟᴏɢɪᴄ(ᴜsᴇʀ.ɪᴅ, ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴜsᴇʀ.ᴜsᴇʀɴᴀᴍᴇ, ᴄʜᴀᴛ.ɪᴅ), ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+        ʀᴇᴛᴜʀɴ
+    ɪғ ᴅᴀᴛᴀ == "ᴀᴄᴛ_ʀᴇғɪʟʟ":
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ()
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ(ᴀᴡᴀɪᴛ _ʜᴀɴᴅʟᴇ_ʀᴇғɪʟʟ_ʟᴏɢɪᴄ(ᴜsᴇʀ.ɪᴅ, ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴜsᴇʀ.ᴜsᴇʀɴᴀᴍᴇ, ᴄʜᴀᴛ.ɪᴅ), ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+        ʀᴇᴛᴜʀɴ
+    ɪғ ᴅᴀᴛᴀ == "ᴀᴄᴛ_ᴘʀᴏғɪʟᴇ":
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ()
+        ᴅᴏᴄ = ᴅʙ.ɢᴇᴛ_ᴜsᴇʀ(ᴜsᴇʀ.ɪᴅ) ᴏʀ {}
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ(ғ"👤 <ʙ>{ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ}</ʙ> | 🪙 <ᴄᴏᴅᴇ>{ᴅᴏᴄ.ɢᴇᴛ('ᴄᴏɪɴs', 𝟶)}</ᴄᴏᴅᴇ> | ᴡɪɴs: <ᴄᴏᴅᴇ>{ᴅᴏᴄ.ɢᴇᴛ('ɢᴀᴍᴇs_ᴡᴏɴ', 𝟶)}</ᴄᴏᴅᴇ>", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+        ʀᴇᴛᴜʀɴ
+    ɪғ ᴅᴀᴛᴀ == "ᴀᴄᴛ_ᴛᴏᴘ":
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ()
+        ʟɪɴᴇs = ["🏆 <ʙ>ɢʟᴏʙᴀʟ ᴛᴏᴘ 𝟻</ʙ>"] + [ғ"{ɪ}. <ʙ>{ʀ.ɢᴇᴛ('ɴᴀᴍᴇ', 'ᴘʟᴀʏᴇʀ')}</ʙ> — <ᴄᴏᴅᴇ>{ʀ.ɢᴇᴛ('ᴄᴏɪɴs', 𝟶)}</ᴄᴏᴅᴇ>" ғᴏʀ ɪ, ʀ ɪɴ ᴇɴᴜᴍᴇʀᴀᴛᴇ(ᴅʙ.ᴛᴏᴘ_ɢʟᴏʙᴀʟ(𝟻), 𝟷)]
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ("\ɴ".ᴊᴏɪɴ(ʟɪɴᴇs), ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ)
+        ʀᴇᴛᴜʀɴ
+    ɪғ ᴅᴀᴛᴀ.sᴛᴀʀᴛsᴡɪᴛʜ("ʙᴇᴛ:"):
+        _, ɢᴀᴍᴇ_ᴛʏᴘᴇ, ʙᴇᴛ_sᴛʀ = ᴅᴀᴛᴀ.sᴘʟɪᴛ(":", 𝟸)
+        ʙᴇᴛ = ɪɴᴛ(ʙᴇᴛ_sᴛʀ)
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ()
+        ɪғ ɢᴀᴍᴇ_ᴛʏᴘᴇ == "ᴍɪɴᴇs":
+            ᴀᴡᴀɪᴛ sᴛᴀʀᴛ_ᴍɪɴᴇs_ɢᴀᴍᴇ(ᴄʜᴀᴛ.ɪᴅ, ᴜsᴇʀ.ɪᴅ, ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴜsᴇʀ.ᴜsᴇʀɴᴀᴍᴇ, ʙᴇᴛ, ǫᴜᴇʀʏ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ)
+        ᴇʟɪғ ɢᴀᴍᴇ_ᴛʏᴘᴇ == "ғʟɪᴘ_ᴘɪᴄᴋ":
+            ᴋʙ = ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅᴍᴀʀᴋᴜᴘ([
+                [ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ(ғ"👑 ʜᴇᴀᴅs ({ʙᴇᴛ})", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ=ғ"ғʟɪᴘ_ɢᴏ:{ʙᴇᴛ}:ʜᴇᴀᴅs"), ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ(ғ"🦅 ᴛᴀɪʟs ({ʙᴇᴛ})", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ=ғ"ғʟɪᴘ_ɢᴏ:{ʙᴇᴛ}:ᴛᴀɪʟs")],
+                [ɪɴʟɪɴᴇᴋᴇʏʙᴏᴀʀᴅʙᴜᴛᴛᴏɴ("⬅️ ʙᴀᴄᴋ", ᴄᴀʟʟʙᴀᴄᴋ_ᴅᴀᴛᴀ="ᴍᴇɴᴜ_ғʟɪᴘ")],
             ])
-            await query.edit_message_text(f"🪙 <b>Coin Flip</b> ({bet}) — Heads ya Tails?", parse_mode=ParseMode.HTML, reply_markup=kb)
-        elif game_type == "dice":
-            await play_emoji_game(update, context, "🎲", "🎲 <b>Dice Bet</b>", bet)
-        elif game_type == "slots":
-            await play_emoji_game(update, context, "🎰", "🎰 <b>Slots Bet</b>", bet)
-        return
-    if data.startswith("flip_go:"):
-        _, bet_str, side = data.split(":", 2)
-        await query.answer()
-        await play_coin_flip(chat.id, user.id, user.first_name, user.username, int(bet_str), side, query.message.reply_text)
-        return
+            ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴇᴅɪᴛ_ᴍᴇssᴀɢᴇ_ᴛᴇxᴛ(ғ"🪙 <ʙ>ᴄᴏɪɴ ғʟɪᴘ</ʙ> ({ʙᴇᴛ}) — ʜᴇᴀᴅs ʏᴀ ᴛᴀɪʟs?", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ, ʀᴇᴘʟʏ_ᴍᴀʀᴋᴜᴘ=ᴋʙ)
+        ᴇʟɪғ ɢᴀᴍᴇ_ᴛʏᴘᴇ == "ᴅɪᴄᴇ":
+            ᴀᴡᴀɪᴛ ᴘʟᴀʏ_ᴇᴍᴏᴊɪ_ɢᴀᴍᴇ(ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ, "🎲", "🎲 <ʙ>ᴅɪᴄᴇ ʙᴇᴛ</ʙ>", ʙᴇᴛ)
+        ᴇʟɪғ ɢᴀᴍᴇ_ᴛʏᴘᴇ == "sʟᴏᴛs":
+            ᴀᴡᴀɪᴛ ᴘʟᴀʏ_ᴇᴍᴏᴊɪ_ɢᴀᴍᴇ(ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ, "🎰", "🎰 <ʙ>sʟᴏᴛs ʙᴇᴛ</ʙ>", ʙᴇᴛ)
+        ʀᴇᴛᴜʀɴ
+    ɪғ ᴅᴀᴛᴀ.sᴛᴀʀᴛsᴡɪᴛʜ("ғʟɪᴘ_ɢᴏ:"):
+        _, ʙᴇᴛ_sᴛʀ, sɪᴅᴇ = ᴅᴀᴛᴀ.sᴘʟɪᴛ(":", 𝟸)
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ()
+        ᴀᴡᴀɪᴛ ᴘʟᴀʏ_ᴄᴏɪɴ_ғʟɪᴘ(ᴄʜᴀᴛ.ɪᴅ, ᴜsᴇʀ.ɪᴅ, ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴜsᴇʀ.ᴜsᴇʀɴᴀᴍᴇ, ɪɴᴛ(ʙᴇᴛ_sᴛʀ), sɪᴅᴇ, ǫᴜᴇʀʏ.ᴍᴇssᴀɢᴇ.ʀᴇᴘʟʏ_ᴛᴇxᴛ)
+        ʀᴇᴛᴜʀɴ
 
-    game_key = (chat.id, user.id)
-    if data.startswith("mines_pick:") or data == "mines_cashout":
-        game = ACTIVE_MINES.get(game_key)
-        if not game:
-            for (cid, uid), _ in ACTIVE_MINES.items():
-                if cid == chat.id and uid != user.id:
-                    await query.answer("🙅 Ye game tumhara nahi hai bhai!", show_alert=True)
-                    return
-            await query.answer("Ye Mines game expire ho chuka hai.")
-            return
-        if data == "mines_cashout":
-            rev_cnt = len(game["revealed"])
-            if rev_cnt < 1:
-                await query.answer("Pehle 1 diamond kholo!", show_alert=True)
-                return
-            ACTIVE_MINES.pop(game_key, None)
-            mult = calc_mines_multiplier(rev_cnt, game["mines_count"])
-            payout = int(game["bet"] * mult)
-            new_bal = db.adjust_coins(user.id, payout, chat_id=chat.id, name=user.first_name, won_delta=1)
-            line = random.choice(MINES_WIN_DIALOGUES).format(payout=payout, profit=max(0, payout - game["bet"]))
-            await query.answer("💰 Cash Out!")
-            await query.edit_message_text(f"💰 <b>Cash Out!</b> — <b>{user.first_name}</b> ({mult}x)\n{line}\n🪙 <b>Balance:</b> <code>{new_bal}</code>", parse_mode=ParseMode.HTML, reply_markup=build_mines_keyboard(game, True))
-            return
-        idx = int(data.split(":", 1)[1])
-        if idx in game["revealed"]:
-            await query.answer("Tile pehle hi khul chuka hai!")
-            return
-        if idx in game["mines"]:
-            ACTIVE_MINES.pop(game_key, None)
-            doc = db.get_user(user.id) or {"coins": 0}
-            await query.answer("💥 BOOM!")
-            await query.edit_message_text(f"💥 <b>Blast!</b> — <b>{user.first_name}</b>\n{random.choice(MINES_LOSS_DIALOGUES).format(bet=game['bet'])}\n🪙 <b>Balance:</b> <code>{doc['coins']}</code>", parse_mode=ParseMode.HTML, reply_markup=build_mines_keyboard(game, True))
-            return
-        game["revealed"].append(idx)
-        rev_cnt = len(game["revealed"])
-        safe_total = 25 - game["mines_count"]
-        mult = calc_mines_multiplier(rev_cnt, game["mines_count"])
-        cashout_amt = int(game["bet"] * mult)
-        if rev_cnt >= safe_total:
-            ACTIVE_MINES.pop(game_key, None)
-            new_bal = db.adjust_coins(user.id, cashout_amt, chat_id=chat.id, name=user.first_name, won_delta=1)
-            await query.answer("🏆 Full Clear!")
-            await query.edit_message_text(f"🏆 <b>Full Clear!</b> — <b>{user.first_name}</b> (+{cashout_amt})\n🪙 <b>Balance:</b> <code>{new_bal}</code>", parse_mode=ParseMode.HTML, reply_markup=build_mines_keyboard(game, True))
-            return
-        await query.answer(f"💎 Safe! {mult}x")
-        await query.edit_message_text(f"💣 <b>Mines</b> — <b>{user.first_name}</b>\n🪙 Bet: <code>{game['bet']}</code> | Mult: <b>{mult}x</b> | Cash Out: <code>{cashout_amt}</code>", parse_mode=ParseMode.HTML, reply_markup=build_mines_keyboard(game, False))
-
-
-async def track_chat_activity(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.effective_chat:
-        db.register_chat(update.effective_chat.id, update.effective_chat.type, update.effective_chat.title)
+    ɢᴀᴍᴇ_ᴋᴇʏ = (ᴄʜᴀᴛ.ɪᴅ, ᴜsᴇʀ.ɪᴅ)
+    ɪғ ᴅᴀᴛᴀ.sᴛᴀʀᴛsᴡɪᴛʜ("ᴍɪɴᴇs_ᴘɪᴄᴋ:") ᴏʀ ᴅᴀᴛᴀ == "ᴍɪɴᴇs_ᴄᴀsʜᴏᴜᴛ":
+        ɢᴀᴍᴇ = ᴀᴄᴛɪᴠᴇ_ᴍɪɴᴇs.ɢᴇᴛ(ɢᴀᴍᴇ_ᴋᴇʏ)
+        ɪғ ɴᴏᴛ ɢᴀᴍᴇ:
+            ғᴏʀ (ᴄɪᴅ, ᴜɪᴅ), _ ɪɴ ᴀᴄᴛɪᴠᴇ_ᴍɪɴᴇs.ɪᴛᴇᴍs():
+                ɪғ ᴄɪᴅ == ᴄʜᴀᴛ.ɪᴅ ᴀɴᴅ ᴜɪᴅ != ᴜsᴇʀ.ɪᴅ:
+                    ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ("🙅 ʏᴇ ɢᴀᴍᴇ ᴛᴜᴍʜᴀʀᴀ ɴᴀʜɪ ʜᴀɪ ʙʜᴀɪ!", sʜᴏᴡ_ᴀʟᴇʀᴛ=ᴛʀᴜᴇ)
+                    ʀᴇᴛᴜʀɴ
+            ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ("ʏᴇ ᴍɪɴᴇs ɢᴀᴍᴇ ᴇxᴘɪʀᴇ ʜᴏ ᴄʜᴜᴋᴀ ʜᴀɪ.")
+            ʀᴇᴛᴜʀɴ
+        ɪғ ᴅᴀᴛᴀ == "ᴍɪɴᴇs_ᴄᴀsʜᴏᴜᴛ":
+            ʀᴇᴠ_ᴄɴᴛ = ʟᴇɴ(ɢᴀᴍᴇ["ʀᴇᴠᴇᴀʟᴇᴅ"])
+            ɪғ ʀᴇᴠ_ᴄɴᴛ < 𝟷:
+                ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ("ᴘᴇʜʟᴇ 𝟷 ᴅɪᴀᴍᴏɴᴅ ᴋʜᴏʟᴏ!", sʜᴏᴡ_ᴀʟᴇʀᴛ=ᴛʀᴜᴇ)
+                ʀᴇᴛᴜʀɴ
+            ᴀᴄᴛɪᴠᴇ_ᴍɪɴᴇs.ᴘᴏᴘ(ɢᴀᴍᴇ_ᴋᴇʏ, ɴᴏɴᴇ)
+            ᴍᴜʟᴛ = ᴄᴀʟᴄ_ᴍɪɴᴇs_ᴍᴜʟᴛɪᴘʟɪᴇʀ(ʀᴇᴠ_ᴄɴᴛ, ɢᴀᴍᴇ["ᴍɪɴᴇs_ᴄᴏᴜɴᴛ"])
+            ᴘᴀʏᴏᴜᴛ = ɪɴᴛ(ɢᴀᴍᴇ["ʙᴇᴛ"] * ᴍᴜʟᴛ)
+            ɴᴇᴡ_ʙᴀʟ = ᴅʙ.ᴀᴅᴊᴜsᴛ_ᴄᴏɪɴs(ᴜsᴇʀ.ɪᴅ, ᴘᴀʏᴏᴜᴛ, ᴄʜᴀᴛ_ɪᴅ=ᴄʜᴀᴛ.ɪᴅ, ɴᴀᴍᴇ=ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴡᴏɴ_ᴅᴇʟᴛᴀ=𝟷)
+            ʟɪɴᴇ = ʀᴀɴᴅᴏᴍ.ᴄʜᴏɪᴄᴇ(ᴍɪɴᴇs_ᴡɪɴ_ᴅɪᴀʟᴏɢᴜᴇs).ғᴏʀᴍᴀᴛ(ᴘᴀʏᴏᴜᴛ=ᴘᴀʏᴏᴜᴛ, ᴘʀᴏғɪᴛ=ᴍᴀx(𝟶, ᴘᴀʏᴏᴜᴛ - ɢᴀᴍᴇ["ʙᴇᴛ"]))
+            ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ("💰 ᴄᴀsʜ ᴏᴜᴛ!")
+            ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴇᴅɪᴛ_ᴍᴇssᴀɢᴇ_ᴛᴇxᴛ(ғ"💰 <ʙ>ᴄᴀsʜ ᴏᴜᴛ!</ʙ> — <ʙ>{ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ}</ʙ> ({ᴍᴜʟᴛ}x)\ɴ{ʟɪɴᴇ}\ɴ🪙 <ʙ>ʙᴀʟᴀɴᴄᴇ:</ʙ> <ᴄᴏᴅᴇ>{ɴᴇᴡ_ʙᴀʟ}</ᴄᴏᴅᴇ>", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ, ʀᴇᴘʟʏ_ᴍᴀʀᴋᴜᴘ=ʙᴜɪʟᴅ_ᴍɪɴᴇs_ᴋᴇʏʙᴏᴀʀᴅ(ɢᴀᴍᴇ, ᴛʀᴜᴇ))
+            ʀᴇᴛᴜʀɴ
+        ɪᴅx = ɪɴᴛ(ᴅᴀᴛᴀ.sᴘʟɪᴛ(":", 𝟷)[𝟷])
+        ɪғ ɪᴅx ɪɴ ɢᴀᴍᴇ["ʀᴇᴠᴇᴀʟᴇᴅ"]:
+            ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ("ᴛɪʟᴇ ᴘᴇʜʟᴇ ʜɪ ᴋʜᴜʟ ᴄʜᴜᴋᴀ ʜᴀɪ!")
+            ʀᴇᴛᴜʀɴ
+        ɪғ ɪᴅx ɪɴ ɢᴀᴍᴇ["ᴍɪɴᴇs"]:
+            ᴀᴄᴛɪᴠᴇ_ᴍɪɴᴇs.ᴘᴏᴘ(ɢᴀᴍᴇ_ᴋᴇʏ, ɴᴏɴᴇ)
+            ᴅᴏᴄ = ᴅʙ.ɢᴇᴛ_ᴜsᴇʀ(ᴜsᴇʀ.ɪᴅ) ᴏʀ {"ᴄᴏɪɴs": 𝟶}
+            ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ("💥 ʙᴏᴏᴍ!")
+            ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴇᴅɪᴛ_ᴍᴇssᴀɢᴇ_ᴛᴇxᴛ(ғ"💥 <ʙ>ʙʟᴀsᴛ!</ʙ> — <ʙ>{ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ}</ʙ>\ɴ{ʀᴀɴᴅᴏᴍ.ᴄʜᴏɪᴄᴇ(ᴍɪɴᴇs_ʟᴏss_ᴅɪᴀʟᴏɢᴜᴇs).ғᴏʀᴍᴀᴛ(ʙᴇᴛ=ɢᴀᴍᴇ['ʙᴇᴛ'])}\ɴ🪙 <ʙ>ʙᴀʟᴀɴᴄᴇ:</ʙ> <ᴄᴏᴅᴇ>{ᴅᴏᴄ['ᴄᴏɪɴs']}</ᴄᴏᴅᴇ>", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ, ʀᴇᴘʟʏ_ᴍᴀʀᴋᴜᴘ=ʙᴜɪʟᴅ_ᴍɪɴᴇs_ᴋᴇʏʙᴏᴀʀᴅ(ɢᴀᴍᴇ, ᴛʀᴜᴇ))
+            ʀᴇᴛᴜʀɴ
+        ɢᴀᴍᴇ["ʀᴇᴠᴇᴀʟᴇᴅ"].ᴀᴘᴘᴇɴᴅ(ɪᴅx)
+        ʀᴇᴠ_ᴄɴᴛ = ʟᴇɴ(ɢᴀᴍᴇ["ʀᴇᴠᴇᴀʟᴇᴅ"])
+        sᴀғᴇ_ᴛᴏᴛᴀʟ = 𝟸𝟻 - ɢᴀᴍᴇ["ᴍɪɴᴇs_ᴄᴏᴜɴᴛ"]
+        ᴍᴜʟᴛ = ᴄᴀʟᴄ_ᴍɪɴᴇs_ᴍᴜʟᴛɪᴘʟɪᴇʀ(ʀᴇᴠ_ᴄɴᴛ, ɢᴀᴍᴇ["ᴍɪɴᴇs_ᴄᴏᴜɴᴛ"])
+        ᴄᴀsʜᴏᴜᴛ_ᴀᴍᴛ = ɪɴᴛ(ɢᴀᴍᴇ["ʙᴇᴛ"] * ᴍᴜʟᴛ)
+        ɪғ ʀᴇᴠ_ᴄɴᴛ >= sᴀғᴇ_ᴛᴏᴛᴀʟ:
+            ᴀᴄᴛɪᴠᴇ_ᴍɪɴᴇs.ᴘᴏᴘ(ɢᴀᴍᴇ_ᴋᴇʏ, ɴᴏɴᴇ)
+            ɴᴇᴡ_ʙᴀʟ = ᴅʙ.ᴀᴅᴊᴜsᴛ_ᴄᴏɪɴs(ᴜsᴇʀ.ɪᴅ, ᴄᴀsʜᴏᴜᴛ_ᴀᴍᴛ, ᴄʜᴀᴛ_ɪᴅ=ᴄʜᴀᴛ.ɪᴅ, ɴᴀᴍᴇ=ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ, ᴡᴏɴ_ᴅᴇʟᴛᴀ=𝟷)
+            ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ("🏆 ғᴜʟʟ ᴄʟᴇᴀʀ!")
+            ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴇᴅɪᴛ_ᴍᴇssᴀɢᴇ_ᴛᴇxᴛ(ғ"🏆 <ʙ>ғᴜʟʟ ᴄʟᴇᴀʀ!</ʙ> — <ʙ>{ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ}</ʙ> (+{ᴄᴀsʜᴏᴜᴛ_ᴀᴍᴛ})\ɴ🪙 <ʙ>ʙᴀʟᴀɴᴄᴇ:</ʙ> <ᴄᴏᴅᴇ>{ɴᴇᴡ_ʙᴀʟ}</ᴄᴏᴅᴇ>", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ, ʀᴇᴘʟʏ_ᴍᴀʀᴋᴜᴘ=ʙᴜɪʟᴅ_ᴍɪɴᴇs_ᴋᴇʏʙᴏᴀʀᴅ(ɢᴀᴍᴇ, ᴛʀᴜᴇ))
+            ʀᴇᴛᴜʀɴ
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴀɴsᴡᴇʀ(ғ"💎 sᴀғᴇ! {ᴍᴜʟᴛ}x")
+        ᴀᴡᴀɪᴛ ǫᴜᴇʀʏ.ᴇᴅɪᴛ_ᴍᴇssᴀɢᴇ_ᴛᴇxᴛ(ғ"💣 <ʙ>ᴍɪɴᴇs</ʙ> — <ʙ>{ᴜsᴇʀ.ғɪʀsᴛ_ɴᴀᴍᴇ}</ʙ>\ɴ🪙 ʙᴇᴛ: <ᴄᴏᴅᴇ>{ɢᴀᴍᴇ['ʙᴇᴛ']}</ᴄᴏᴅᴇ> | ᴍᴜʟᴛ: <ʙ>{ᴍᴜʟᴛ}x</ʙ> | ᴄᴀsʜ ᴏᴜᴛ: <ᴄᴏᴅᴇ>{ᴄᴀsʜᴏᴜᴛ_ᴀᴍᴛ}</ᴄᴏᴅᴇ>", ᴘᴀʀsᴇ_ᴍᴏᴅᴇ=ᴘᴀʀsᴇᴍᴏᴅᴇ.ʜᴛᴍʟ, ʀᴇᴘʟʏ_ᴍᴀʀᴋᴜᴘ=ʙᴜɪʟᴅ_ᴍɪɴᴇs_ᴋᴇʏʙᴏᴀʀᴅ(ɢᴀᴍᴇ, ғᴀʟsᴇ))
 
 
-flask_app = Flask(__name__)
+ᴀsʏɴᴄ ᴅᴇғ ᴛʀᴀᴄᴋ_ᴄʜᴀᴛ_ᴀᴄᴛɪᴠɪᴛʏ(ᴜᴘᴅᴀᴛᴇ: ᴜᴘᴅᴀᴛᴇ, ᴄᴏɴᴛᴇxᴛ: ᴄᴏɴᴛᴇxᴛᴛʏᴘᴇs.ᴅᴇғᴀᴜʟᴛ_ᴛʏᴘᴇ) -> ɴᴏɴᴇ:
+    ɪғ ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ:
+        ᴅʙ.ʀᴇɢɪsᴛᴇʀ_ᴄʜᴀᴛ(ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ.ɪᴅ, ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ.ᴛʏᴘᴇ, ᴜᴘᴅᴀᴛᴇ.ᴇғғᴇᴄᴛɪᴠᴇ_ᴄʜᴀᴛ.ᴛɪᴛʟᴇ)
 
 
-@flask_app.route("/")
-@flask_app.route("/health")
-def health_check():
-    return jsonify({"status": "ok", "bot": "running"}), 200
+ғʟᴀsᴋ_ᴀᴘᴘ = ғʟᴀsᴋ(__ɴᴀᴍᴇ__)
 
 
-def run_flask() -> None:
-    flask_app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
+@ғʟᴀsᴋ_ᴀᴘᴘ.ʀᴏᴜᴛᴇ("/")
+@ғʟᴀsᴋ_ᴀᴘᴘ.ʀᴏᴜᴛᴇ("/ʜᴇᴀʟᴛʜ")
+ᴅᴇғ ʜᴇᴀʟᴛʜ_ᴄʜᴇᴄᴋ():
+    ʀᴇᴛᴜʀɴ ᴊsᴏɴɪғʏ({"sᴛᴀᴛᴜs": "ᴏᴋ", "ʙᴏᴛ": "ʀᴜɴɴɪɴɢ"}), 𝟸𝟶𝟶
 
 
-def build_bot_app() -> Application:
-    app = (
-        Application.builder()
-        .token(BOT_TOKEN)
-        .connect_timeout(20.0)
-        .read_timeout(30.0)
-        .get_updates_connect_timeout(20.0)
-        .get_updates_read_timeout(35.0)
-        .build()
+ᴅᴇғ ʀᴜɴ_ғʟᴀsᴋ() -> ɴᴏɴᴇ:
+    ғʟᴀsᴋ_ᴀᴘᴘ.ʀᴜɴ(ʜᴏsᴛ="𝟶.𝟶.𝟶.𝟶", ᴘᴏʀᴛ=ᴘᴏʀᴛ, ᴅᴇʙᴜɢ=ғᴀʟsᴇ, ᴜsᴇ_ʀᴇʟᴏᴀᴅᴇʀ=ғᴀʟsᴇ)
+
+
+ᴅᴇғ ʙᴜɪʟᴅ_ʙᴏᴛ_ᴀᴘᴘ() -> ᴀᴘᴘʟɪᴄᴀᴛɪᴏɴ:
+    ʀᴇᴛᴜʀɴ (
+        ᴀᴘᴘʟɪᴄᴀᴛɪᴏɴ.ʙᴜɪʟᴅᴇʀ()
+        .ᴛᴏᴋᴇɴ(ʙᴏᴛ_ᴛᴏᴋᴇɴ)
+        .ᴄᴏɴɴᴇᴄᴛ_ᴛɪᴍᴇᴏᴜᴛ(𝟸𝟶.𝟶)
+        .ʀᴇᴀᴅ_ᴛɪᴍᴇᴏᴜᴛ(𝟹𝟶.𝟶)
+        .ɢᴇᴛ_ᴜᴘᴅᴀᴛᴇs_ᴄᴏɴɴᴇᴄᴛ_ᴛɪᴍᴇᴏᴜᴛ(𝟸𝟶.𝟶)
+        .ɢᴇᴛ_ᴜᴘᴅᴀᴛᴇs_ʀᴇᴀᴅ_ᴛɪᴍᴇᴏᴜᴛ(𝟹𝟻.𝟶)
+        .ʙᴜɪʟᴅ()
     )
 
-    for cmd, fn in [
-        ("start", cmd_start), ("help", cmd_help), ("bal", cmd_bal),
-        ("daily", cmd_daily), ("refill", cmd_refill), ("ref", cmd_ref),
-        ("give", cmd_give), ("gtop", cmd_gtop), ("top", cmd_top),
-        ("mines", cmd_mines), ("flip", cmd_flip), ("dice", cmd_dice), ("slots", cmd_slots),
-        ("broadcast", cmd_broadcast), ("stats", cmd_stats),
-        ("addcoins", cmd_addcoins), ("setcoins", cmd_setcoins),
+
+ᴀsʏɴᴄ ᴅᴇғ ʀᴜɴ_ʙᴏᴛ_ғᴏʀᴇᴠᴇʀ() -> ɴᴏɴᴇ:
+    ғᴏʀ ᴄᴍᴅ, ғɴ ɪɴ [
+        ("sᴛᴀʀᴛ", ᴄᴍᴅ_sᴛᴀʀᴛ), ("ʜᴇʟᴘ", ᴄᴍᴅ_ʜᴇʟᴘ), ("ʙᴀʟ", ᴄᴍᴅ_ʙᴀʟ),
+        ("ᴅᴀɪʟʏ", ᴄᴍᴅ_ᴅᴀɪʟʏ), ("ʀᴇғɪʟʟ", ᴄᴍᴅ_ʀᴇғɪʟʟ), ("ʀᴇғ", ᴄᴍᴅ_ʀᴇғ),
+        ("ɢɪᴠᴇ", ᴄᴍᴅ_ɢɪᴠᴇ), ("ɢᴛᴏᴘ", ᴄᴍᴅ_ɢᴛᴏᴘ), ("ᴛᴏᴘ", ᴄᴍᴅ_ᴛᴏᴘ),
+        ("ᴍɪɴᴇs", ᴄᴍᴅ_ᴍɪɴᴇs), ("ғʟɪᴘ", ᴄᴍᴅ_ғʟɪᴘ), ("ᴅɪᴄᴇ", ᴄᴍᴅ_ᴅɪᴄᴇ), ("sʟᴏᴛs", ᴄᴍᴅ_sʟᴏᴛs),
+        ("ʙʀᴏᴀᴅᴄᴀsᴛ", ᴄᴍᴅ_ʙʀᴏᴀᴅᴄᴀsᴛ), ("sᴛᴀᴛs", ᴄᴍᴅ_sᴛᴀᴛs),
+        ("ᴀᴅᴅᴄᴏɪɴs", ᴄᴍᴅ_ᴀᴅᴅᴄᴏɪɴs), ("sᴇᴛᴄᴏɪɴs", ᴄᴍᴅ_sᴇᴛᴄᴏɪɴs),
     ]:
-        app.add_handler(CommandHandler(cmd, fn))
+        ᴘᴀss
 
-    app.add_handler(CallbackQueryHandler(on_callback_query))
-    app.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, track_chat_activity))
-    return app
+    ᴡʜɪʟᴇ ᴛʀᴜᴇ:
+        ᴀᴘᴘ = ʙᴜɪʟᴅ_ʙᴏᴛ_ᴀᴘᴘ()
+        ғᴏʀ ᴄᴍᴅ, ғɴ ɪɴ [
+            ("sᴛᴀʀᴛ", ᴄᴍᴅ_sᴛᴀʀᴛ), ("ʜᴇʟᴘ", ᴄᴍᴅ_ʜᴇʟᴘ), ("ʙᴀʟ", ᴄᴍᴅ_ʙᴀʟ),
+            ("ᴅᴀɪʟʏ", ᴄᴍᴅ_ᴅᴀɪʟʏ), ("ʀᴇғɪʟʟ", ᴄᴍᴅ_ʀᴇғɪʟʟ), ("ʀᴇғ", ᴄᴍᴅ_ʀᴇғ),
+            ("ɢɪᴠᴇ", ᴄᴍᴅ_ɢɪᴠᴇ), ("ɢᴛᴏᴘ", ᴄᴍᴅ_ɢᴛᴏᴘ), ("ᴛᴏᴘ", ᴄᴍᴅ_ᴛᴏᴘ),
+            ("ᴍɪɴᴇs", ᴄᴍᴅ_ᴍɪɴᴇs), ("ғʟɪᴘ", ᴄᴍᴅ_ғʟɪᴘ), ("ᴅɪᴄᴇ", ᴄᴍᴅ_ᴅɪᴄᴇ), ("sʟᴏᴛs", ᴄᴍᴅ_sʟᴏᴛs),
+            ("ʙʀᴏᴀᴅᴄᴀsᴛ", ᴄᴍᴅ_ʙʀᴏᴀᴅᴄᴀsᴛ), ("sᴛᴀᴛs", ᴄᴍᴅ_sᴛᴀᴛs),
+            ("ᴀᴅᴅᴄᴏɪɴs", ᴄᴍᴅ_ᴀᴅᴅᴄᴏɪɴs), ("sᴇᴛᴄᴏɪɴs", ᴄᴍᴅ_sᴇᴛᴄᴏɪɴs),
+        ]:
+            ᴀᴘᴘ.ᴀᴅᴅ_ʜᴀɴᴅʟᴇʀ(ᴄᴏᴍᴍᴀɴᴅʜᴀɴᴅʟᴇʀ(ᴄᴍᴅ, ғɴ))
+        ᴀᴘᴘ.ᴀᴅᴅ_ʜᴀɴᴅʟᴇʀ(ᴄᴀʟʟʙᴀᴄᴋǫᴜᴇʀʏʜᴀɴᴅʟᴇʀ(ᴏɴ_ᴄᴀʟʟʙᴀᴄᴋ_ǫᴜᴇʀʏ))
+        ᴀᴘᴘ.ᴀᴅᴅ_ʜᴀɴᴅʟᴇʀ(ᴍᴇssᴀɢᴇʜᴀɴᴅʟᴇʀ(ғɪʟᴛᴇʀs.ᴀʟʟ & ~ғɪʟᴛᴇʀs.ᴄᴏᴍᴍᴀɴᴅ, ᴛʀᴀᴄᴋ_ᴄʜᴀᴛ_ᴀᴄᴛɪᴠɪᴛʏ))
+
+        ᴛʀʏ:
+            ʟᴏɢɢᴇʀ.ɪɴғᴏ("ɪɴɪᴛɪᴀʟɪᴢɪɴɢ ᴛᴇʟᴇɢʀᴀᴍ ʙᴏᴛ...")
+            ᴀᴡᴀɪᴛ ᴀᴘᴘ.ɪɴɪᴛɪᴀʟɪᴢᴇ()
+            ᴀᴡᴀɪᴛ ᴀᴘᴘ.sᴛᴀʀᴛ()
+            ᴀᴡᴀɪᴛ ᴀᴘᴘ.ᴜᴘᴅᴀᴛᴇʀ.sᴛᴀʀᴛ_ᴘᴏʟʟɪɴɢ(
+                ᴀʟʟᴏᴡᴇᴅ_ᴜᴘᴅᴀᴛᴇs=ᴜᴘᴅᴀᴛᴇ.ᴀʟʟ_ᴛʏᴘᴇs,
+                ᴘᴏʟʟ_ɪɴᴛᴇʀᴠᴀʟ=𝟷.𝟶,
+                ᴛɪᴍᴇᴏᴜᴛ=𝟷𝟻,
+                ʙᴏᴏᴛsᴛʀᴀᴘ_ʀᴇᴛʀɪᴇs=-𝟷,
+            )
+            ʟᴏɢɢᴇʀ.ɪɴғᴏ("ᴛᴇʟᴇɢʀᴀᴍ ʙᴏᴛ ᴘᴏʟʟɪɴɢ ᴀᴄᴛɪᴠᴇ.")
+            ᴡʜɪʟᴇ ᴛʀᴜᴇ:
+                ᴀᴡᴀɪᴛ ᴀsʏɴᴄɪᴏ.sʟᴇᴇᴘ(𝟹𝟼𝟶𝟶)
+        ᴇxᴄᴇᴘᴛ ʀᴇᴛʀʏᴀғᴛᴇʀ ᴀs ᴇxᴄ:
+            ᴡᴀɪᴛ_sᴇᴄ = ɪɴᴛ(ᴇxᴄ.ʀᴇᴛʀʏ_ᴀғᴛᴇʀ) + 𝟻
+            ʟᴏɢɢᴇʀ.ᴡᴀʀɴɪɴɢ("ᴛᴇʟᴇɢʀᴀᴍ ғʟᴏᴏᴅ ʟɪᴍɪᴛ ʜɪᴛ. ᴡᴀɪᴛɪɴɢ %s sᴇᴄᴏɴᴅs...", ᴡᴀɪᴛ_sᴇᴄ)
+            ᴀᴡᴀɪᴛ ᴀsʏɴᴄɪᴏ.sʟᴇᴇᴘ(ᴡᴀɪᴛ_sᴇᴄ)
+        ᴇxᴄᴇᴘᴛ ᴛɪᴍᴇᴅᴏᴜᴛ:
+            ʟᴏɢɢᴇʀ.ᴡᴀʀɴɪɴɢ("ᴛᴇʟᴇɢʀᴀᴍ ʀᴇǫᴜᴇsᴛ ᴛɪᴍᴇᴅ ᴏᴜᴛ. ʀᴇᴛʀʏɪɴɢ ɪɴ 𝟼 sᴇᴄᴏɴᴅs...")
+            ᴀᴡᴀɪᴛ ᴀsʏɴᴄɪᴏ.sʟᴇᴇᴘ(𝟼)
+        ᴇxᴄᴇᴘᴛ ᴛᴇʟᴇɢʀᴀᴍᴇʀʀᴏʀ ᴀs ᴇxᴄ:
+            ʟᴏɢɢᴇʀ.ᴇʀʀᴏʀ("ᴛᴇʟᴇɢʀᴀᴍ ᴇʀʀᴏʀ (%s). ʀᴇᴛʀʏɪɴɢ ɪɴ 𝟾 sᴇᴄᴏɴᴅs...", ᴇxᴄ)
+            ᴀᴡᴀɪᴛ ᴀsʏɴᴄɪᴏ.sʟᴇᴇᴘ(𝟾)
+        ᴇxᴄᴇᴘᴛ ᴇxᴄᴇᴘᴛɪᴏɴ ᴀs ᴇxᴄ:
+            ʟᴏɢɢᴇʀ.ᴇʀʀᴏʀ("ᴜɴᴇxᴘᴇᴄᴛᴇᴅ ᴇʀʀᴏʀ (%s). ʀᴇᴛʀʏɪɴɢ ɪɴ 𝟾 sᴇᴄᴏɴᴅs...", ᴇxᴄ)
+            ᴀᴡᴀɪᴛ ᴀsʏɴᴄɪᴏ.sʟᴇᴇᴘ(𝟾)
+        ғɪɴᴀʟʟʏ:
+            ᴛʀʏ:
+                ɪғ ᴀᴘᴘ.ᴜᴘᴅᴀᴛᴇʀ ᴀɴᴅ ᴀᴘᴘ.ᴜᴘᴅᴀᴛᴇʀ.ʀᴜɴɴɪɴɢ:
+                    ᴀᴡᴀɪᴛ ᴀᴘᴘ.ᴜᴘᴅᴀᴛᴇʀ.sᴛᴏᴘ()
+                ɪғ ᴀᴘᴘ.ʀᴜɴɴɪɴɢ:
+                    ᴀᴡᴀɪᴛ ᴀᴘᴘ.sᴛᴏᴘ()
+                ᴀᴡᴀɪᴛ ᴀᴘᴘ.sʜᴜᴛᴅᴏᴡɴ()
+            ᴇxᴄᴇᴘᴛ ᴇxᴄᴇᴘᴛɪᴏɴ:
+                ᴘᴀss
 
 
-def main() -> None:
-    if not BOT_TOKEN:
-        raise RuntimeError("BOT_TOKEN environment variable missing!")
+ᴅᴇғ ᴍᴀɪɴ() -> ɴᴏɴᴇ:
+    ɪғ ɴᴏᴛ ʙᴏᴛ_ᴛᴏᴋᴇɴ:
+        ʀᴀɪsᴇ ʀᴜɴᴛɪᴍᴇᴇʀʀᴏʀ("ʙᴏᴛ_ᴛᴏᴋᴇɴ ᴇɴᴠɪʀᴏɴᴍᴇɴᴛ ᴠᴀʀɪᴀʙʟᴇ ᴍɪssɪɴɢ!")
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    threading.Thread(target=run_flask, daemon=True).start()
-
-    while True:
-        try:
-            app = build_bot_app()
-            logger.info("Starting Telegram bot polling...")
-            app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
-            break
-        except RetryAfter as exc:
-            wait_sec = int(exc.retry_after) + 5
-            logger.warning("Telegram flood limit hit. Waiting %s seconds...", wait_sec)
-            time.sleep(wait_sec)
-        except TimedOut:
-            logger.warning("Telegram request timed out. Retrying in 8 seconds...")
-            time.sleep(8)
-        except TelegramError as exc:
-            logger.error("Telegram error (%s). Retrying in 10 seconds...", exc)
-            time.sleep(10)
+    ᴛʜʀᴇᴀᴅɪɴɢ.ᴛʜʀᴇᴀᴅ(ᴛᴀʀɢᴇᴛ=ʀᴜɴ_ғʟᴀsᴋ, ᴅᴀᴇᴍᴏɴ=ᴛʀᴜᴇ).sᴛᴀʀᴛ()
+    ʟᴏᴏᴘ = ᴀsʏɴᴄɪᴏ.ɴᴇᴡ_ᴇᴠᴇɴᴛ_ʟᴏᴏᴘ()
+    ᴀsʏɴᴄɪᴏ.sᴇᴛ_ᴇᴠᴇɴᴛ_ʟᴏᴏᴘ(ʟᴏᴏᴘ)
+    ᴛʀʏ:
+        ʟᴏᴏᴘ.ʀᴜɴ_ᴜɴᴛɪʟ_ᴄᴏᴍᴘʟᴇᴛᴇ(ʀᴜɴ_ʙᴏᴛ_ғᴏʀᴇᴠᴇʀ())
+    ғɪɴᴀʟʟʏ:
+        ʟᴏᴏᴘ.ᴄʟᴏsᴇ()
 
 
-if __name__ == "__main__":
-    main()
+ɪғ __ɴᴀᴍᴇ__ == "__ᴍᴀɪɴ__":
+    ᴍᴀɪɴ()
