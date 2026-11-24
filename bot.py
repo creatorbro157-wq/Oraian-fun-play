@@ -657,26 +657,15 @@ def schedule_delete_messages(
 
 def help_text() -> str:
     return (
-        "📖 <b>Game Guide (Simple &amp; Clear)</b>
-
-"
-        "<b>🎮 Modes &amp; Players:</b>
-"
-        "• <b>Aviator</b> (Single / Group Live Flight): <code>1.0x</code> se <code>0.2x</code> steps mein <code>7.0x</code> tak—crash se pehle <b>Cash Out</b> dabao. Group mein <code>20s</code> entry ke baad cash-out feed neeche dikhti hai.
-"
-        "• <b>Mines</b> (Single / Group Parallel 2–4+): <code>2, 4, 5, 7, 9</code> bombs chuno, safe 💎 tiles kholo aur cash out karo. Group mein har player ka board alag hota hai.
-"
-        "• <b>5x5 Tic Tac Toe</b> (Group Multiplayer 2–6 / 3–4+): <code>12s</code> join window, alag-alag marks, <code>20s</code> turn—zyada lines banane wala jeetega.
-"
-        "• <b>R-P-S, Hi-Lo, Flip, Dice, Slots, Guess, Wheel &amp; Sports</b> (Solo DM / Group <code>20s</code> Round): Group mein <code>20s</code> round + sabki live bet lock list + end mein result.
-
-"
-        "<b>🪙 Coins &amp; Commands:</b>
-"
-        f"• <code>/daily</code> — Har <code>24h</code> mein <b>{DAILY_REWARD}</b> coins.
-"
-        f"• <code>/refill</code> (ya <b>🪙 Refill</b>) — Har <code>30m</code> mein <b>{REFILL_AMOUNT}</b> coins.
-"
+        "📖 <b>Game Guide (Simple &amp; Clear)</b>\n\n"
+        "<b>🎮 Modes &amp; Players:</b>\n"
+        "• <b>Aviator</b> (Single / Group Live Flight): <code>1.0x</code> se <code>0.2x</code> steps mein <code>7.0x</code> tak—crash se pehle <b>Cash Out</b> dabao. Group mein <code>20s</code> entry ke baad cash-out feed neeche dikhti hai.\n"
+        "• <b>Mines</b> (Single / Group Parallel 2–4+): <code>2, 4, 5, 7, 9</code> bombs chuno, safe 💎 tiles kholo aur cash out karo. Group mein har player ka board alag hota hai.\n"
+        "• <b>5x5 Tic Tac Toe</b> (Group Multiplayer 2–6 / 3–4+): <code>12s</code> join window, alag-alag marks, <code>20s</code> turn—zyada lines banane wala jeetega.\n"
+        "• <b>R-P-S, Hi-Lo, Flip, Dice, Slots, Guess, Wheel &amp; Sports</b> (Solo DM / Group <code>20s</code> Round): Group mein <code>20s</code> round + sabki live bet lock list + end mein result.\n\n"
+        "<b>🪙 Coins &amp; Commands:</b>\n"
+        f"• <code>/daily</code> — Har <code>24h</code> mein <b>{DAILY_REWARD}</b> coins.\n"
+        f"• <code>/refill</code> (ya <b>🪙 Refill</b>) — Har <code>30m</code> mein <b>{REFILL_AMOUNT}</b> coins.\n"
         "• <code>/bal</code>, <code>/give &lt;amt&gt;</code> (reply), <code>/gtop</code>, <code>/top</code>, <code>/ref</code>, <code>/mines</code>."
     )
 
@@ -697,8 +686,7 @@ async def claim_daily_logic(user_id: int, first_name: str, username: Optional[st
     new_bal = db.adjust_coins(user_id, DAILY_REWARD)
     bal_val = new_bal if new_bal is not None else int(user.get("coins", 0)) + DAILY_REWARD
     return True, (
-        f"🎁 <b>Daily Claimed!</b> +{DAILY_REWARD} coins mile.
-"
+        f"🎁 <b>Daily Claimed!</b> +{DAILY_REWARD} coins mile.\n"
         f"🪙 <b>Balance:</b> <code>{bal_val}</code>"
     )
 
@@ -716,8 +704,7 @@ async def claim_refill_logic(user_id: int, first_name: str, username: Optional[s
     new_bal = db.adjust_coins(user_id, REFILL_AMOUNT)
     bal_val = new_bal if new_bal is not None else int(user.get("coins", 0)) + REFILL_AMOUNT
     return True, (
-        f"🪙 <b>Refill Done!</b> +{REFILL_AMOUNT} coins mile.
-"
+        f"🪙 <b>Refill Done!</b> +{REFILL_AMOUNT} coins mile.\n"
         f"🪙 <b>Balance:</b> <code>{bal_val}</code>"
     )
 
@@ -731,14 +718,10 @@ def format_balance_card(user_id: int, name: str, username: Optional[str]) -> str
     best_streak = int(u.get("best_streak", 0))
     big_win = int(u.get("biggest_win", 0))
     return (
-        f"👤 <b>{u.get('first_name', name)}</b>
-"
-        f"🪙 <b>Balance:</b> <code>{coins}</code> coins
-"
-        f"🎮 <b>Played / Won:</b> <code>{played}</code> / <code>{won}</code>
-"
-        f"🔥 <b>Streak (Best):</b> <code>{streak}</code> (<code>{best_streak}</code>)
-"
+        f"👤 <b>{u.get('first_name', name)}</b>\n"
+        f"🪙 <b>Balance:</b> <code>{coins}</code> coins\n"
+        f"🎮 <b>Played / Won:</b> <code>{played}</code> / <code>{won}</code>\n"
+        f"🔥 <b>Streak (Best):</b> <code>{streak}</code> (<code>{best_streak}</code>)\n"
         f"💎 <b>Biggest Win:</b> <code>{big_win}</code>"
     )
 
@@ -830,10 +813,8 @@ async def start_mines_game(
     }
     ACTIVE_MINES[game_key] = game
     await send_fn(
-        f"💣 <b>Mines</b> · {bombs} mines · bet <code>{bet}</code> · <b>{name}</b>
-"
-        f"Safe 💎 tiles kholo aur cash out karo.
-"
+        f"💣 <b>Mines</b> · {bombs} mines · bet <code>{bet}</code> · <b>{name}</b>\n"
+        f"Safe 💎 tiles kholo aur cash out karo.\n"
         f"🪙 <b>Balance:</b> <code>{new_bal}</code>",
         parse_mode=ParseMode.HTML,
         reply_markup=build_mines_keyboard(game, reveal_all=False, finished=False),
@@ -925,8 +906,7 @@ async def finish_ttt5_game(app: Application, chat_id: int, reason: str = "Board 
 
     msg = await app.bot.send_message(
         chat_id=chat_id,
-        text="
-".join(lines_out),
+        text="\n".join(lines_out),
         parse_mode=ParseMode.HTML,
         reply_markup=build_ttt5_keyboard(game, finished=True),
     )
@@ -963,10 +943,8 @@ async def ttt5_turn_watcher(app: Application, chat_id: int, expected_turn_num: i
             chat_id=chat_id,
             message_id=game["message_id"],
             text=(
-                f"❎ <b>5x5 Tic Tac Toe</b> (Auto-move by {cur_player['name']})
-"
-                f"{format_ttt5_roster(game)}
-"
+                f"❎ <b>5x5 Tic Tac Toe</b> (Auto-move by {cur_player['name']})\n"
+                f"{format_ttt5_roster(game)}\n"
                 f"🎯 Turn: {next_p['mark']} <b>{next_p['name']}</b> ({TTT_TURN_SECONDS}s)"
             ),
             parse_mode=ParseMode.HTML,
@@ -1010,10 +988,8 @@ async def ttt5_join_countdown(app: Application, chat_id: int, message_id: int) -
             chat_id=chat_id,
             message_id=message_id,
             text=(
-                f"❎ <b>5x5 Tic Tac Toe Started!</b>
-"
-                f"{format_ttt5_roster(game)}
-"
+                f"❎ <b>5x5 Tic Tac Toe Started!</b>\n"
+                f"{format_ttt5_roster(game)}\n"
                 f"🎯 Turn: {first_p['mark']} <b>{first_p['name']}</b> ({TTT_TURN_SECONDS}s)"
             ),
             parse_mode=ParseMode.HTML,
@@ -1116,10 +1092,8 @@ async def resolve_solo_game(
         final_bal = new_bal
 
     await send_fn(
-        f"{outcome_text}
-"
-        f"💰 <b>Bet:</b> <code>{bet}</code> · <b>Payout:</b> <code>{payout}</code>
-"
+        f"{outcome_text}\n"
+        f"💰 <b>Bet:</b> <code>{bet}</code> · <b>Payout:</b> <code>{payout}</code>\n"
         f"🪙 <b>Balance:</b> <code>{final_bal}</code>",
         parse_mode=ParseMode.HTML,
     )
@@ -1148,8 +1122,7 @@ async def resolve_solo_aviator(
         payout = int(round(bet * target_m))
         final_b = db.adjust_coins(user_id, payout, chat_id=chat_id, name=name, won_delta=1, payout_amount=payout)
         await send_fn(
-            f"🚀 Cash Out at <b>{target_m:.1f}x</b> (Crash: {crash_m:.1f}x)
-"
+            f"🚀 Cash Out at <b>{target_m:.1f}x</b> (Crash: {crash_m:.1f}x)\n"
             f"💰 Payout: <code>{payout}</code> · Bal: <code>{final_b}</code>",
             parse_mode=ParseMode.HTML,
         )
@@ -1170,8 +1143,7 @@ def format_locked_bets_text(round_obj: Dict[str, Any]) -> str:
     lines = ["🔒 <b>Locked Bets:</b>"]
     for item in bets.values():
         lines.append(f"• ✅ <b>{item['name']}</b> ne <code>{item['bet']}</code> coins par lock kar diya ({item['choice']})")
-    return "
-".join(lines)
+    return "\n".join(lines)
 
 
 def format_aviator_cashout_feed(flight_obj: Dict[str, Any]) -> str:
@@ -1183,8 +1155,7 @@ def format_aviator_cashout_feed(flight_obj: Dict[str, Any]) -> str:
         lines.append(
             f"• ✅ <b>{c['name']}</b> ne <code>{c['mult']:.1f}x</code> par Cash Out kar liya! (<code>+{c['payout']}</code> coins)"
         )
-    return "
-".join(lines)
+    return "\n".join(lines)
 
 
 async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Dict[str, Any]) -> None:
@@ -1232,11 +1203,8 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
                 chat_id=chat_id,
                 message_id=msg_id,
                 text=(
-                    f"🚀 <b>Aviator Live:</b> <code>{cur_mult:.1f}x</code>
-"
-                    f"⚡ Crash hone se pehle Cash Out dabao!
-
-"
+                    f"🚀 <b>Aviator Live:</b> <code>{cur_mult:.1f}x</code>\n"
+                    f"⚡ Crash hone se pehle Cash Out dabao!\n\n"
                     f"{format_aviator_cashout_feed(flight_state)}"
                 ),
                 parse_mode=ParseMode.HTML,
@@ -1276,8 +1244,7 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
         await app.bot.edit_message_text(
             chat_id=chat_id,
             message_id=msg_id,
-            text="
-".join(summary_lines),
+            text="\n".join(summary_lines),
             parse_mode=ParseMode.HTML,
         )
         schedule_delete_messages(app.bot, chat_id, [msg_id], AUTO_DELETE_RESULT_SEC)
@@ -1398,8 +1365,7 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
         await app.bot.edit_message_text(
             chat_id=chat_id,
             message_id=msg_id,
-            text="
-".join(result_lines),
+            text="\n".join(result_lines),
             parse_mode=ParseMode.HTML,
         )
         schedule_delete_messages(app.bot, chat_id, [msg_id], AUTO_DELETE_RESULT_SEC)
@@ -1445,22 +1411,16 @@ async def start_group_round(
     if game_key == "aviator":
         markup = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
         msg = await send_fn(
-            f"🚀 <b>Aviator Group Round</b> ({ROUND_SECONDS}s entry)
-"
-            f"Started by <b>{starter_name}</b> — apni bet lock karo!
-
-"
+            f"🚀 <b>Aviator Group Round</b> ({ROUND_SECONDS}s entry)\n"
+            f"Started by <b>{starter_name}</b> — apni bet lock karo!\n\n"
             f"{format_locked_bets_text(round_obj)}",
             parse_mode=ParseMode.HTML,
             reply_markup=markup,
         )
     else:
         msg = await send_fn(
-            f"🎮 <b>{game_key.upper()} Round</b> ({ROUND_SECONDS}s)
-"
-            f"Started by <b>{starter_name}</b> — pehle apni choice chuno:
-
-"
+            f"🎮 <b>{game_key.upper()} Round</b> ({ROUND_SECONDS}s)\n"
+            f"Started by <b>{starter_name}</b> — pehle apni choice chuno:\n\n"
             f"{format_locked_bets_text(round_obj)}",
             parse_mode=ParseMode.HTML,
             reply_markup=game_choice_keyboard(game_key, round_id),
@@ -1530,8 +1490,7 @@ async def cmd_ref(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     uname = BOT_USERNAME or (context.bot.username or "your_bot")
     link = f"https://t.me/{uname}?start={u.id}"
     await update.message.reply_text(
-        f"🔗 <b>Your Invite Link:</b>
-<code>{link}</code>",
+        f"🔗 <b>Your Invite Link:</b>\n<code>{link}</code>",
         parse_mode=ParseMode.HTML,
     )
 
@@ -1568,8 +1527,7 @@ async def cmd_give(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     db.adjust_coins(target.id, amt)
     await update.message.reply_text(
-        f"💸 <b>{sender.first_name}</b> ne <b>{target.first_name}</b> ko <code>{amt}</code> coins bheje!
-"
+        f"💸 <b>{sender.first_name}</b> ne <b>{target.first_name}</b> ko <code>{amt}</code> coins bheje!\n"
         f"🪙 Tumhara balance: <code>{new_sender_bal}</code>",
         parse_mode=ParseMode.HTML,
     )
@@ -1587,8 +1545,7 @@ async def cmd_top(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     for idx, r in enumerate(rows):
         prefix = medals.get(idx, f"{idx + 1}.")
         lines.append(f"{prefix} <b>{r.get('first_name', 'Player')}</b> — <code>{int(r.get('coins', 0))}</code> coins")
-    await update.message.reply_text("
-".join(lines), parse_mode=ParseMode.HTML)
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
 async def cmd_gtop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1607,8 +1564,7 @@ async def cmd_gtop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     for idx, r in enumerate(rows):
         prefix = medals.get(idx, f"{idx + 1}.")
         lines.append(f"{prefix} <b>{r.get('name', 'Player')}</b> — <code>{int(r.get('net_coins', 0))}</code> net")
-    await update.message.reply_text("
-".join(lines), parse_mode=ParseMode.HTML)
+    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
 
 
 async def cmd_mines(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1709,12 +1665,9 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     s = db.stats_summary()
     await update.message.reply_text(
-        f"📊 <b>Bot Stats</b>
-"
-        f"• Users: <code>{s['users']}</code>
-"
-        f"• Chats: <code>{s['chats']}</code>
-"
+        f"📊 <b>Bot Stats</b>\n"
+        f"• Users: <code>{s['users']}</code>\n"
+        f"• Chats: <code>{s['chats']}</code>\n"
         f"• Total Coins: <code>{s['coins']}</code>",
         parse_mode=ParseMode.HTML,
     )
@@ -1819,8 +1772,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             lines = ["🌍 <b>Global Rank Top 10</b>", ""]
             for idx, r in enumerate(rows):
                 lines.append(f"{medals.get(idx, f'{idx + 1}.')} <b>{r.get('first_name', 'Player')}</b> — <code>{int(r.get('coins', 0))}</code> coins")
-            await reply_cb("
-".join(lines))
+            await reply_cb("\n".join(lines))
             return
 
         if data == "menu_gtop":
@@ -1833,8 +1785,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             lines = [f"👥 <b>{chat.title or 'Group'} Top 10</b>", ""]
             for idx, r in enumerate(rows):
                 lines.append(f"{medals.get(idx, f'{idx + 1}.')} <b>{r.get('name', 'Player')}</b> — <code>{int(r.get('net_coins', 0))}</code> net")
-            await reply_cb("
-".join(lines))
+            await reply_cb("\n".join(lines))
             return
 
         if data == "menu_mines":
@@ -1917,11 +1868,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if query.message:
                 try:
                     await query.message.edit_text(
-                        f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)
-"
-                        f"<b>{u.first_name}</b> ne <b>{choice}</b> chuna — ab bet amount chuno:
-
-"
+                        f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)\n"
+                        f"<b>{u.first_name}</b> ne <b>{choice}</b> chuna — ab bet amount chuno:\n\n"
                         f"{format_locked_bets_text(round_obj)}",
                         parse_mode=ParseMode.HTML,
                         reply_markup=bet_kb,
@@ -1958,18 +1906,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if query.message:
                 if round_obj["game"] == "aviator":
                     kb = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
-                    header = f"🚀 <b>Aviator Group Round</b> ({ROUND_SECONDS}s entry)
-Apni bet lock karo!"
+                    header = f"🚀 <b>Aviator Group Round</b> ({ROUND_SECONDS}s entry)\nApni bet lock karo!"
                 else:
                     kb = game_choice_keyboard(round_obj["game"], round_id)
-                    header = f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)
-Baaki members apni choice &amp; bet lock kar sakte hain:"
+                    header = f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)\nBaaki members apni choice &amp; bet lock kar sakte hain:"
 
                 try:
                     await query.message.edit_text(
-                        f"{header}
-
-{format_locked_bets_text(round_obj)}",
+                        f"{header}\n\n{format_locked_bets_text(round_obj)}",
                         parse_mode=ParseMode.HTML,
                         reply_markup=kb,
                     )
@@ -2009,11 +1953,8 @@ Baaki members apni choice &amp; bet lock kar sakte hain:"
                 )
                 try:
                     await query.message.edit_text(
-                        f"🚀 <b>Aviator Live:</b> <code>{mult:.1f}x</code>
-"
-                        f"⚡ Crash hone se pehle Cash Out dabao!
-
-"
+                        f"🚀 <b>Aviator Live:</b> <code>{mult:.1f}x</code>\n"
+                        f"⚡ Crash hone se pehle Cash Out dabao!\n\n"
                         f"{format_aviator_cashout_feed(flight)}",
                         parse_mode=ParseMode.HTML,
                         reply_markup=cashout_btn,
@@ -2046,8 +1987,7 @@ Baaki members apni choice &amp; bet lock kar sakte hain:"
                 if query.message:
                     try:
                         await query.message.edit_text(
-                            f"💥 <b>Boom! Mine Hit</b> — <b>{u.first_name}</b>
-"
+                            f"💥 <b>Boom! Mine Hit</b> — <b>{u.first_name}</b>\n"
                             f"Bet <code>{game['bet']}</code> gaya.",
                             parse_mode=ParseMode.HTML,
                             reply_markup=build_mines_keyboard(game, reveal_all=True, finished=True),
@@ -2069,8 +2009,7 @@ Baaki members apni choice &amp; bet lock kar sakte hain:"
                 if query.message:
                     try:
                         await query.message.edit_text(
-                            f"🏆 <b>Board Clear!</b> <b>{u.first_name}</b> ne <code>{payout}</code> coins ({mult}x) jeete!
-"
+                            f"🏆 <b>Board Clear!</b> <b>{u.first_name}</b> ne <code>{payout}</code> coins ({mult}x) jeete!\n"
                             f"🪙 <b>Balance:</b> <code>{bal}</code>",
                             parse_mode=ParseMode.HTML,
                             reply_markup=build_mines_keyboard(game, reveal_all=True, finished=True),
@@ -2083,8 +2022,7 @@ Baaki members apni choice &amp; bet lock kar sakte hain:"
             if query.message:
                 try:
                     await query.message.edit_text(
-                        f"💣 <b>Mines</b> · {game['mines_count']} mines · bet <code>{game['bet']}</code> · <b>{u.first_name}</b>
-"
+                        f"💣 <b>Mines</b> · {game['mines_count']} mines · bet <code>{game['bet']}</code> · <b>{u.first_name}</b>\n"
                         f"✨ Current: <code>{mult}x</code> (Payout: <code>{payout}</code>)",
                         parse_mode=ParseMode.HTML,
                         reply_markup=build_mines_keyboard(game, reveal_all=False, finished=False),
@@ -2106,8 +2044,7 @@ Baaki members apni choice &amp; bet lock kar sakte hain:"
             if query.message:
                 try:
                     await query.message.edit_text(
-                        f"💰 <b>Cashed Out!</b> <b>{u.first_name}</b> ne <code>{mult}x</code> par <code>{payout}</code> coins nikale!
-"
+                        f"💰 <b>Cashed Out!</b> <b>{u.first_name}</b> ne <code>{mult}x</code> par <code>{payout}</code> coins nikale!\n"
                         f"🪙 <b>Balance:</b> <code>{bal}</code>",
                         parse_mode=ParseMode.HTML,
                         reply_markup=build_mines_keyboard(game, reveal_all=True, finished=True),
@@ -2144,10 +2081,8 @@ Baaki members apni choice &amp; bet lock kar sakte hain:"
             }
             ACTIVE_TTT5[chat_id] = game
             msg = await reply_cb(
-                f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{entry_bet}</code> coins
-"
-                f"{format_ttt5_roster(game)}
-"
+                f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{entry_bet}</code> coins\n"
+                f"{format_ttt5_roster(game)}\n"
                 f"⏳ Join karne ke liye <b>{TTT_JOIN_SECONDS}s</b> bache hain!",
                 reply_markup=build_ttt5_keyboard(game, finished=False),
             )
@@ -2180,10 +2115,8 @@ Baaki members apni choice &amp; bet lock kar sakte hain:"
             if query.message:
                 try:
                     await query.message.edit_text(
-                        f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{game['bet']}</code> coins
-"
-                        f"{format_ttt5_roster(game)}
-"
+                        f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{game['bet']}</code> coins\n"
+                        f"{format_ttt5_roster(game)}\n"
                         f"⏳ Join karne ke liye <b>{TTT_JOIN_SECONDS}s</b> window chal rahi hai!",
                         parse_mode=ParseMode.HTML,
                         reply_markup=build_ttt5_keyboard(game, finished=False),
@@ -2221,10 +2154,8 @@ Baaki members apni choice &amp; bet lock kar sakte hain:"
             if query.message:
                 try:
                     await query.message.edit_text(
-                        f"❎ <b>5x5 Tic Tac Toe</b>
-"
-                        f"{format_ttt5_roster(game)}
-"
+                        f"❎ <b>5x5 Tic Tac Toe</b>\n"
+                        f"{format_ttt5_roster(game)}\n"
                         f"🎯 Turn: {next_p['mark']} <b>{next_p['name']}</b> ({TTT_TURN_SECONDS}s)",
                         parse_mode=ParseMode.HTML,
                         reply_markup=build_ttt5_keyboard(game, finished=False),
