@@ -66,6 +66,7 @@ ROUND_SECONDS = 15  # updated from 20s to 15s
 TTT_JOIN_SECONDS = 12  # 2x from 6s
 TTT_TURN_SECONDS = 15  # updated from 20s to 15s
 AUTO_DELETE_RESULT_SEC = 10  # auto-delete finished match/result message quickly
+STALE_UI_DELETE_SEC = 20  # auto-delete idle info/bet/selection menus
 
 AVIATOR_STEP_SEC = 0.45
 AVIATOR_STEP_INC = 0.2
@@ -125,7 +126,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             [
                 stylish_btn("🚀 Aviator", "menu_aviator", "primary"),
                 stylish_btn("💣 Mines", "menu_mines", "danger"),
-                stylish_btn("❎ 5x5 TTT", "start_ttt5", "primary"),
+                stylish_btn("❎ TicTacToe", "menu_ttt", "primary"),
             ],
             [
                 stylish_btn("✊ R-P-S", "pick_game:rps", "primary"),
@@ -145,14 +146,36 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
             [
                 stylish_btn("🎁 Daily", "do_daily", "success"),
                 stylish_btn("💰 Balance", "menu_bal", "success"),
-                stylish_btn("🏆 Top", "menu_top", "primary"),
+                stylish_btn("👤 Profile", "menu_profile", "primary"),
             ],
             [
+                stylish_btn("🏆 Top", "menu_top", "primary"),
                 stylish_btn("👥 Group Top", "menu_gtop", "primary"),
                 stylish_btn("❓ Help", "menu_help", "muted"),
             ],
         ]
     )
+
+
+def ttt_size_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                stylish_btn("3×3 (2–3P)", "ttt_start:3", "primary"),
+                stylish_btn("4×4 (2–4P)", "ttt_start:4", "primary"),
+                stylish_btn("5×5 (2–6P)", "ttt_start:5", "primary"),
+            ],
+            [stylish_btn("⬅️ Main Menu", "back_menu", "muted")],
+        ]
+    )
+
+
+def post_game_keyboard(replay_cb: str, back_mode_cb: Optional[str] = None) -> InlineKeyboardMarkup:
+    row = [stylish_btn("🔄 Replay", replay_cb, "success")]
+    if back_mode_cb:
+        row.append(stylish_btn("🔙 Modes", back_mode_cb, "primary"))
+    row.append(stylish_btn("🏠 Menu", "back_menu", "muted"))
+    return InlineKeyboardMarkup([row])
 
 
 def mines_bombs_keyboard() -> InlineKeyboardMarkup:
@@ -277,6 +300,75 @@ def game_choice_keyboard(game_key: str, round_id: str) -> InlineKeyboardMarkup:
             ],
         ]
     )
+
+
+def solo_choice_keyboard(game_key: str) -> InlineKeyboardMarkup:
+    if game_key == "rps":
+        return InlineKeyboardMarkup([
+            [
+                stylish_btn("✊ Rock", "schoice:rps:rock", "primary"),
+                stylish_btn("✋ Paper", "schoice:rps:paper", "primary"),
+                stylish_btn("✌️ Scissor", "schoice:rps:scissor", "primary"),
+            ],
+            [stylish_btn("🏠 Menu", "back_menu", "muted")],
+        ])
+    if game_key == "hilo":
+        return InlineKeyboardMarkup([
+            [
+                stylish_btn("⬆️ High (4–6)", "schoice:hilo:high", "success"),
+                stylish_btn("⬇️ Low (1–3)", "schoice:hilo:low", "danger"),
+            ],
+            [stylish_btn("🏠 Menu", "back_menu", "muted")],
+        ])
+    if game_key == "flip":
+        return InlineKeyboardMarkup([
+            [
+                stylish_btn("🟡 Heads", "schoice:flip:heads", "primary"),
+                stylish_btn("⚪ Tails", "schoice:flip:tails", "primary"),
+            ],
+            [stylish_btn("🏠 Menu", "back_menu", "muted")],
+        ])
+    if game_key == "dice":
+        return InlineKeyboardMarkup([
+            [stylish_btn(f"🎲 {n}", f"schoice:dice:{n}", "primary") for n in (1, 2, 3)],
+            [stylish_btn(f"🎲 {n}", f"schoice:dice:{n}", "primary") for n in (4, 5, 6)],
+            [stylish_btn("🏠 Menu", "back_menu", "muted")],
+        ])
+    if game_key == "slots":
+        return InlineKeyboardMarkup([
+            [
+                stylish_btn("🍒 Cherry (2.5x)", "schoice:slots:cherry", "primary"),
+                stylish_btn("💎 Gem (4x)", "schoice:slots:gem", "success"),
+                stylish_btn("7️⃣ Jackpot (7x)", "schoice:slots:seven", "danger"),
+            ],
+            [stylish_btn("🏠 Menu", "back_menu", "muted")],
+        ])
+    if game_key == "guess":
+        return InlineKeyboardMarkup([
+            [stylish_btn(f"{n}", f"schoice:guess:{n}", "primary") for n in (1, 2, 3, 4, 5)],
+            [stylish_btn(f"{n}", f"schoice:guess:{n}", "primary") for n in (6, 7, 8, 9, 10)],
+            [stylish_btn("🏠 Menu", "back_menu", "muted")],
+        ])
+    if game_key == "wheel":
+        return InlineKeyboardMarkup([
+            [
+                stylish_btn("🟢 2x", "schoice:wheel:2x", "success"),
+                stylish_btn("🔵 3x", "schoice:wheel:3x", "primary"),
+                stylish_btn("🔴 5x", "schoice:wheel:5x", "danger"),
+            ],
+            [stylish_btn("🏠 Menu", "back_menu", "muted")],
+        ])
+    return InlineKeyboardMarkup([
+        [
+            stylish_btn("🏀 Hoops", "schoice:sports:hoops", "primary"),
+            stylish_btn("⚽ Goal", "schoice:sports:goal", "success"),
+        ],
+        [
+            stylish_btn("🎯 Bullseye", "schoice:sports:target", "danger"),
+            stylish_btn("🎳 Strike", "schoice:sports:strike", "primary"),
+        ],
+        [stylish_btn("🏠 Menu", "back_menu", "muted")],
+    ])
 
 
 # ==============================================================================
@@ -748,16 +840,17 @@ def format_sports_anim(sport_key: str, picked: Optional[str] = None) -> str:
 
 def help_text() -> str:
     return (
-        "📖 <b>Game Guide (Simple &amp; Clear)</b>\n\n"
-        "<b>🎮 Modes &amp; Players:</b>\n"
-        "• <b>Aviator</b> (Single / Group Live Flight): <code>1.0x</code> se <code>0.2x</code> steps mein <code>7.0x</code> tak—crash se pehle <b>Cash Out</b> dabao. Group mein <code>20s</code> entry ke baad cash-out feed neeche dikhti hai.\n"
-        "• <b>Mines</b> (Single / Group Parallel 2–4+): <code>2, 4, 5, 7, 9</code> bombs chuno, safe 💎 tiles kholo aur cash out karo. Group mein har player ka board alag hota hai.\n"
-        "• <b>5x5 Tic Tac Toe</b> (Group Multiplayer 2–6 / 3–4+): <code>12s</code> join window, alag-alag marks, <code>15s</code> turn—zyada lines banane wala jeetega.\n"
-        "• <b>R-P-S, Hi-Lo, Flip, Dice, Slots, Guess, Wheel &amp; Sports</b> (Solo DM / Group <code>20s</code> Round): Group mein <code>15s</code> round + sabki live bet lock list + end mein result.\n\n"
-        "<b>🪙 Coins &amp; Commands:</b>\n"
-        f"• <code>/daily</code> — Har <code>24h</code> mein <b>{DAILY_REWARD}</b> coins.\n"
-        f"• <code>/refill</code> (ya <b>🪙 Refill</b>) — Har <code>30m</code> mein <b>{REFILL_AMOUNT}</b> coins.\n"
-        "• <code>/bal</code>, <code>/give &lt;amt&gt;</code> (reply), <code>/gtop</code>, <code>/top</code>, <code>/ref</code>, <code>/mines</code>."
+        "📖 <b>Quick Game &amp; Coin Guide</b>\n\n"
+        "<b>🎯 Games</b>\n"
+        "• <b>Aviator:</b> Plane <code>[•] → [••••••]</code> ke saath <code>1.0x–7.0x</code> tak udta hai. Crash se pehle <b>Cash Out</b> dabao (DM &amp; Group dono mein).\n"
+        "• <b>Mines:</b> <code>2/4/5/7/9</code> bombs chuno, 💎 tiles kholo, kabhi bhi Cash Out karo.\n"
+        "• <b>Tic Tac Toe:</b> <code>3×3</code> (2–3P), <code>4×4</code> (2–4P), ya <code>5×5</code> (2–6P) board — <code>12s</code> join &amp; <code>15s</code> turn.\n"
+        "• <b>Coin Flip &amp; Rounds:</b> Choice chuno → bet lock karo (group mein min 2 players) → result + Replay/Menu.\n"
+        "• <b>Sports:</b> 4 options (🏀 Hoops, ⚽ Goal, 🎯 Bullseye, 🎳 Strike) + Replay / Modes / Menu.\n\n"
+        "<b>🪙 Coins &amp; Commands</b>\n"
+        f"• <code>/daily</code> — <b>{DAILY_REWARD}</b> coins (har <code>24h</code>)\n"
+        f"• <code>/refill</code> — <b>{REFILL_AMOUNT}</b> coins (har <code>30m</code>)\n"
+        "• <code>/profile</code> · <code>/bal</code> · <code>/give &lt;amt&gt;</code> · <code>/gtop</code> · <code>/top</code> · <code>/ref</code> · <code>/mines</code>"
     )
 
 
@@ -797,6 +890,29 @@ async def claim_refill_logic(user_id: int, first_name: str, username: Optional[s
     return True, (
         f"🪙 <b>Refill Done!</b> +{REFILL_AMOUNT} coins mile.\n"
         f"🪙 <b>Balance:</b> <code>{bal_val}</code>"
+    )
+
+
+def format_profile_card(user_id: int, name: str, username: Optional[str]) -> str:
+    u = db.ensure_user(user_id, name, username)
+    coins = int(u.get("coins", 0))
+    played = int(u.get("games_played", 0))
+    won = int(u.get("games_won", 0))
+    loss = int(u["games_loss"]) if "games_loss" in u else max(0, played - won)
+    total_calc = max(played, won + loss)
+    win_rate = round((won / total_calc) * 100, 1) if total_calc > 0 else 0.0
+    streak = int(u.get("streak", 0))
+    best_streak = int(u.get("best_streak", 0))
+    big_win = int(u.get("biggest_win", 0))
+    handle = f"@{u['username']}" if u.get("username") else "—"
+    return (
+        f"🪪 <b>Player Profile</b>\n"
+        f"• <b>Name:</b> {u.get('first_name', name)} ({handle})\n"
+        f"• <b>ID:</b> <code>{user_id}</code>\n"
+        f"• <b>Balance:</b> <code>{coins}</code> coins\n"
+        f"• <b>Record:</b> <code>{won}W</code> / <code>{loss}L</code> (<code>{win_rate}%</code>)\n"
+        f"• <b>Streak (Best):</b> <code>{streak}</code> (<code>{best_streak}</code>)\n"
+        f"• <b>Biggest Win:</b> <code>{big_win}</code>"
     )
 
 
@@ -914,72 +1030,86 @@ async def start_mines_game(
 
 
 # ==============================================================================
-# 5x5 TIC TAC TOE ENGINE (2..6 players; ideal for 3-4+ players)
+# MULTI-SIZE TIC TAC TOE ENGINE (3x3, 4x4, 5x5)
 # ==============================================================================
-def build_ttt5_keyboard(game: Dict[str, Any], finished: bool = False) -> InlineKeyboardMarkup:
+TTT_CONFIG = {
+    3: {"max_players": 3, "line_len": 3, "pot_bet": 100},
+    4: {"max_players": 4, "line_len": 3, "pot_bet": 100},
+    5: {"max_players": 6, "line_len": 3, "pot_bet": 100},
+}
+
+
+def build_ttt_keyboard(game: Dict[str, Any], finished: bool = False) -> Optional[InlineKeyboardMarkup]:
+    size = int(game.get("size", 5))
     board: List[Optional[str]] = game["board"]
     rows: List[List[InlineKeyboardButton]] = []
-    for r in range(5):
+    for r in range(size):
         row_btns: List[InlineKeyboardButton] = []
-        for c in range(5):
-            idx = r * 5 + c
+        for c in range(size):
+            idx = r * size + c
             cell = board[idx]
             label = "⬜" if cell is None else cell
             tone = "muted" if cell is None else "primary"
-            row_btns.append(stylish_btn(label, f"ttt5_move:{idx}", tone))
+            row_btns.append(stylish_btn(label, f"ttt_move:{idx}", tone))
         rows.append(row_btns)
 
-    if not finished and game["status"] == "joining":
-        rows.append([stylish_btn("➕ Join Match", "ttt5_join", "success")])
+    max_p = int(game.get("max_players", TTT_MAX_PLAYERS))
+    if not finished and game["status"] == "joining" and len(game["players"]) < max_p:
+        rows.append([stylish_btn(f"➕ Join ({len(game['players'])}/{max_p})", "ttt_join", "success")])
 
     return None if finished else InlineKeyboardMarkup(rows)
 
 
-def count_ttt5_lines(board: List[Optional[str]], mark: str) -> int:
+def count_ttt_lines(board: List[Optional[str]], mark: str, size: int = 5, line_len: int = 3) -> int:
     lines = 0
-    for r in range(5):
-        for c in range(3):
-            if board[r * 5 + c] == mark and board[r * 5 + c + 1] == mark and board[r * 5 + c + 2] == mark:
+    for r in range(size):
+        for c in range(size - line_len + 1):
+            if all(board[r * size + c + k] == mark for k in range(line_len)):
                 lines += 1
-    for c in range(5):
-        for r in range(3):
-            if board[r * 5 + c] == mark and board[(r + 1) * 5 + c] == mark and board[(r + 2) * 5 + c] == mark:
+    for c in range(size):
+        for r in range(size - line_len + 1):
+            if all(board[(r + k) * size + c] == mark for k in range(line_len)):
                 lines += 1
-    for r in range(3):
-        for c in range(3):
-            if board[r * 5 + c] == mark and board[(r + 1) * 5 + c + 1] == mark and board[(r + 2) * 5 + c + 2] == mark:
+    for r in range(size - line_len + 1):
+        for c in range(size - line_len + 1):
+            if all(board[(r + k) * size + c + k] == mark for k in range(line_len)):
                 lines += 1
-    for r in range(3):
-        for c in range(2, 5):
-            if board[r * 5 + c] == mark and board[(r + 1) * 5 + c - 1] == mark and board[(r + 2) * 5 + c - 2] == mark:
+    for r in range(size - line_len + 1):
+        for c in range(line_len - 1, size):
+            if all(board[(r + k) * size + c - k] == mark for k in range(line_len)):
                 lines += 1
     return lines
 
 
-def format_ttt5_roster(game: Dict[str, Any]) -> str:
+def format_ttt_roster(game: Dict[str, Any]) -> str:
     players: List[Dict[str, Any]] = game["players"]
+    max_p = int(game.get("max_players", TTT_MAX_PLAYERS))
     if not players:
-        return "👥 Players (0/6): Koi nahi"
+        return f"👥 Players (0/{max_p}): Koi nahi"
     parts = [f"{p['mark']} {mention_user(p['user_id'], p['name'], p.get('username'))}" for p in players]
-    return f"👥 Players ({len(players)}/{TTT_MAX_PLAYERS}): " + ", ".join(parts)
+    return f"👥 Players ({len(players)}/{max_p}): " + ", ".join(parts)
 
 
-async def finish_ttt5_game(app: Application, chat_id: int, reason: str = "Board Full") -> None:
+async def finish_ttt_game(app: Application, chat_id: int, reason: str = "Board Full") -> None:
     game = ACTIVE_TTT5.pop(chat_id, None)
     if not game:
         return
     game["status"] = "done"
+    size = int(game.get("size", 5))
+    line_len = int(game.get("line_len", 3))
     players: List[Dict[str, Any]] = game["players"]
     board: List[Optional[str]] = game["board"]
     entry_bet = int(game["bet"])
     total_pot = entry_bet * len(players)
 
-    scores: List[Tuple[int, Dict[str, Any]]] = [(count_ttt5_lines(board, p["mark"]), p) for p in players]
+    scores: List[Tuple[int, Dict[str, Any]]] = [
+        (count_ttt_lines(board, p["mark"], size=size, line_len=line_len), p) for p in players
+    ]
     max_pts = max((s[0] for s in scores), default=0)
     winners = [p for pts, p in scores if pts == max_pts and len(players) > 0]
 
     lines_out = [
-        f"🏁 <b>5x5 Tic Tac Toe Over</b> ({reason})",
+        f"🏁 <b>{size}×{size} Tic Tac Toe Result</b> ({reason})",
         f"💰 <b>Pot:</b> <code>{total_pot}</code> coins",
         "",
     ]
@@ -989,7 +1119,9 @@ async def finish_ttt5_game(app: Application, chat_id: int, reason: str = "Board 
         for p in winners:
             uid = p["user_id"]
             new_bal = db.adjust_coins(uid, share, chat_id=chat_id, name=p["name"], won_delta=1, payout_amount=share)
-            lines_out.append(f"🏆 {p['mark']} {mention_user(p['user_id'], p['name'], p.get('username'))} jeeta! +{share} coins (Bal: <code>{new_bal}</code>)")
+            lines_out.append(
+                f"🏆 {p['mark']} {mention_user(p['user_id'], p['name'], p.get('username'))} jeeta! +{share} coins (Bal: <code>{new_bal}</code>)"
+            )
 
     lines_out.append("")
     lines_out.append("📊 <b>Lines Score:</b>")
@@ -1003,11 +1135,12 @@ async def finish_ttt5_game(app: Application, chat_id: int, reason: str = "Board 
         chat_id=chat_id,
         text="\n".join(lines_out),
         parse_mode=ParseMode.HTML,
+        reply_markup=post_game_keyboard(f"ttt_start:{size}", "menu_ttt"),
     )
     schedule_delete_messages(app.bot, chat_id, [msg.message_id], AUTO_DELETE_RESULT_SEC)
 
 
-async def ttt5_turn_watcher(app: Application, chat_id: int, expected_turn_num: int) -> None:
+async def ttt_turn_watcher(app: Application, chat_id: int, expected_turn_num: int) -> None:
     rem_turn = TTT_TURN_SECONDS
     while rem_turn > 0:
         await asyncio.sleep(min(3, rem_turn))
@@ -1015,6 +1148,7 @@ async def ttt5_turn_watcher(app: Application, chat_id: int, expected_turn_num: i
         game = ACTIVE_TTT5.get(chat_id)
         if not game or game.get("status") != "active" or game.get("turn_num") != expected_turn_num:
             return
+        size = int(game.get("size", 5))
         players = game["players"]
         if players and rem_turn > 0:
             cur_p = players[game["turn_idx"] % len(players)]
@@ -1023,12 +1157,12 @@ async def ttt5_turn_watcher(app: Application, chat_id: int, expected_turn_num: i
                     chat_id=chat_id,
                     message_id=game["message_id"],
                     text=(
-                        f"❎ <b>5x5 Tic Tac Toe</b>\n"
-                        f"{format_ttt5_roster(game)}\n"
+                        f"❎ <b>{size}×{size} Tic Tac Toe</b>\n"
+                        f"{format_ttt_roster(game)}\n"
                         f"🎯 Turn: {cur_p['mark']} {mention_user(cur_p['user_id'], cur_p['name'], cur_p.get('username'))} (⏳ <code>{rem_turn}s</code>)"
                     ),
                     parse_mode=ParseMode.HTML,
-                    reply_markup=build_ttt5_keyboard(game, finished=False),
+                    reply_markup=build_ttt_keyboard(game, finished=False),
                 )
             except (BadRequest, TelegramError):
                 pass
@@ -1042,7 +1176,7 @@ async def ttt5_turn_watcher(app: Application, chat_id: int, expected_turn_num: i
     cur_player = players[game["turn_idx"] % len(players)]
     empty_indices = [i for i, val in enumerate(game["board"]) if val is None]
     if not empty_indices:
-        await finish_ttt5_game(app, chat_id, "Board Full")
+        await finish_ttt_game(app, chat_id, "Board Full")
         return
 
     chosen_idx = random.choice(empty_indices)
@@ -1051,29 +1185,30 @@ async def ttt5_turn_watcher(app: Application, chat_id: int, expected_turn_num: i
     game["turn_num"] = expected_turn_num + 1
 
     if all(x is not None for x in game["board"]):
-        await finish_ttt5_game(app, chat_id, "Board Full")
+        await finish_ttt_game(app, chat_id, "Board Full")
         return
 
+    size = int(game.get("size", 5))
     next_p = players[game["turn_idx"] % len(players)]
     try:
         await app.bot.edit_message_text(
             chat_id=chat_id,
             message_id=game["message_id"],
             text=(
-                f"❎ <b>5x5 Tic Tac Toe</b> (Auto-move by {mention_user(cur_player['user_id'], cur_player['name'], cur_player.get('username'))})\n"
-                f"{format_ttt5_roster(game)}\n"
+                f"❎ <b>{size}×{size} Tic Tac Toe</b> (Auto-move by {mention_user(cur_player['user_id'], cur_player['name'], cur_player.get('username'))})\n"
+                f"{format_ttt_roster(game)}\n"
                 f"🎯 Turn: {next_p['mark']} {mention_user(next_p['user_id'], next_p['name'], next_p.get('username'))} ({TTT_TURN_SECONDS}s)"
             ),
             parse_mode=ParseMode.HTML,
-            reply_markup=build_ttt5_keyboard(game, finished=False),
+            reply_markup=build_ttt_keyboard(game, finished=False),
         )
     except (BadRequest, TelegramError):
         pass
 
-    asyncio.create_task(ttt5_turn_watcher(app, chat_id, game["turn_num"]))
+    asyncio.create_task(ttt_turn_watcher(app, chat_id, game["turn_num"]))
 
 
-async def ttt5_join_countdown(app: Application, chat_id: int, message_id: int) -> None:
+async def ttt_join_countdown(app: Application, chat_id: int, message_id: int) -> None:
     rem_join = TTT_JOIN_SECONDS
     while rem_join > 0:
         await asyncio.sleep(min(2, rem_join))
@@ -1081,18 +1216,19 @@ async def ttt5_join_countdown(app: Application, chat_id: int, message_id: int) -
         game = ACTIVE_TTT5.get(chat_id)
         if not game or game.get("status") != "joining":
             return
+        size = int(game.get("size", 5))
         if rem_join > 0:
             try:
                 await app.bot.edit_message_text(
                     chat_id=chat_id,
                     message_id=message_id,
                     text=(
-                        f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{game['bet']}</code> coins\n"
-                        f"{format_ttt5_roster(game)}\n"
+                        f"❎ <b>{size}×{size} Tic Tac Toe</b> · Entry: <code>{game['bet']}</code> coins\n"
+                        f"{format_ttt_roster(game)}\n"
                         f"⏳ Join karne ke liye <b>{rem_join}s</b> bache hain!"
                     ),
                     parse_mode=ParseMode.HTML,
-                    reply_markup=build_ttt5_keyboard(game, finished=False),
+                    reply_markup=build_ttt_keyboard(game, finished=False),
                 )
             except (BadRequest, TelegramError):
                 pass
@@ -1100,6 +1236,7 @@ async def ttt5_join_countdown(app: Application, chat_id: int, message_id: int) -
     if not game or game.get("status") != "joining":
         return
 
+    size = int(game.get("size", 5))
     players = game["players"]
     if len(players) < 2:
         ACTIVE_TTT5.pop(chat_id, None)
@@ -1112,7 +1249,9 @@ async def ttt5_join_countdown(app: Application, chat_id: int, message_id: int) -
                     message_id=message_id,
                     text=f"⚠️ Kam se kam 2 players chahiye the. Bet refund ho gayi (Bal: <code>{bal}</code>).",
                     parse_mode=ParseMode.HTML,
+                    reply_markup=post_game_keyboard(f"ttt_start:{size}", "menu_ttt"),
                 )
+                schedule_delete_messages(app.bot, chat_id, [message_id], AUTO_DELETE_RESULT_SEC)
             except (BadRequest, TelegramError):
                 pass
         return
@@ -1126,17 +1265,17 @@ async def ttt5_join_countdown(app: Application, chat_id: int, message_id: int) -
             chat_id=chat_id,
             message_id=message_id,
             text=(
-                f"❎ <b>5x5 Tic Tac Toe Started!</b>\n"
-                f"{format_ttt5_roster(game)}\n"
+                f"❎ <b>{size}×{size} Tic Tac Toe Started!</b>\n"
+                f"{format_ttt_roster(game)}\n"
                 f"🎯 Turn: {first_p['mark']} <b>{first_p['name']}</b> ({TTT_TURN_SECONDS}s)"
             ),
             parse_mode=ParseMode.HTML,
-            reply_markup=build_ttt5_keyboard(game, finished=False),
+            reply_markup=build_ttt_keyboard(game, finished=False),
         )
     except (BadRequest, TelegramError):
         pass
 
-    asyncio.create_task(ttt5_turn_watcher(app, chat_id, 1))
+    asyncio.create_task(ttt_turn_watcher(app, chat_id, 1))
 
 
 # ==============================================================================
@@ -1257,6 +1396,7 @@ async def resolve_solo_game(
         f"💰 <b>Bet:</b> <code>{bet}</code> · <b>Payout:</b> <code>{payout}</code>\n"
         f"🪙 <b>Balance:</b> <code>{final_bal}</code>",
         parse_mode=ParseMode.HTML,
+        reply_markup=post_game_keyboard(f"schoice:{game_key}:{choice}", f"pick_game:{game_key}"),
     )
     if res_msg and getattr(res_msg, "message_id", None):
         solo_mids.append(int(res_msg.message_id))
@@ -1269,6 +1409,18 @@ async def resolve_solo_game(
                 schedule_delete_messages(bot_ref.get_bot(), chat_id, solo_mids, AUTO_DELETE_RESULT_SEC)
         except Exception:
             pass
+
+
+def format_aviator_plane_bar(mult_val: float, crashed: bool = False, cashed_out: bool = False) -> str:
+    span = max(0.1, AVIATOR_MAX_MULTIPLIER - AVIATOR_MIN_MULTIPLIER)
+    ratio = max(0.0, min(1.0, (mult_val - AVIATOR_MIN_MULTIPLIER) / span))
+    dots = max(1, min(8, int(round(ratio * 8))))
+    bar = "•" * dots
+    if crashed:
+        return f"[{bar}] 💥 {mult_val:.1f}x"
+    if cashed_out:
+        return f"[{bar}] ✅ {mult_val:.1f}x"
+    return f"[{bar}] ✈️ {mult_val:.1f}x"
 
 
 async def resolve_solo_aviator(
@@ -1288,23 +1440,87 @@ async def resolve_solo_aviator(
         await send_fn("❌ Balance kam hai! <code>/daily</code> ya <code>/refill</code> chalao.", parse_mode=ParseMode.HTML)
         return
     db.record_last_bet(user_id, bet)
-    crash_m = round(random.uniform(1.2, 4.5), 1)
-    target_m = round(random.uniform(1.1, min(3.5, crash_m)), 1)
-    av_msg = None
-    if target_m < crash_m:
-        payout = int(round(bet * target_m))
-        final_b = db.adjust_coins(user_id, payout, chat_id=chat_id, name=name, won_delta=1, payout_amount=payout)
-        av_msg = await send_fn(
-            f"🚀 Cash Out at <b>{target_m:.1f}x</b> (Crash: {crash_m:.1f}x)\n"
-            f"💰 Payout: <code>{payout}</code> · Bal: <code>{final_b}</code>",
-            parse_mode=ParseMode.HTML,
-        )
-    else:
-        av_msg = await send_fn(
-            f"💥 Crashed at <b>{crash_m:.1f}x</b>! Loss: <code>{bet}</code> · Bal: <code>{bal}</code>",
-            parse_mode=ParseMode.HTML,
-        )
-    if av_msg and getattr(av_msg, "message_id", None):
+
+    steps_total = int(round((AVIATOR_MAX_MULTIPLIER - AVIATOR_MIN_MULTIPLIER) / AVIATOR_STEP_INC))
+    crash_step = random.randint(1, steps_total)
+    crash_m = round(AVIATOR_MIN_MULTIPLIER + crash_step * AVIATOR_STEP_INC, 1)
+
+    solo_id = f"solo_av_{user_id}_{int(time.time() * 1000)}"
+    flight_state = {
+        "solo": True,
+        "user_id": user_id,
+        "bet": bet,
+        "active": True,
+        "mult": AVIATOR_MIN_MULTIPLIER,
+        "cashed_out": False,
+        "cash_mult": 0.0,
+        "payout": 0,
+    }
+    ROUNDS_BY_ID[solo_id] = {"id": solo_id, "game": "aviator", "flight": flight_state}
+
+    av_msg = await send_fn(
+        f"🚀 <b>Solo Aviator</b> · Bet: <code>{bet}</code>\n"
+        f"<code>{format_aviator_plane_bar(AVIATOR_MIN_MULTIPLIER)}</code>\n"
+        f"⚡ Crash se pehle <b>Cash Out</b> dabao!",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(
+            [[stylish_btn(f"💸 Cash Out ({AVIATOR_MIN_MULTIPLIER:.1f}x)", f"av_cash:{solo_id}", "success")]]
+        ),
+    )
+
+    cur_m = AVIATOR_MIN_MULTIPLIER
+    while cur_m <= crash_m + 1e-9:
+        flight_state["mult"] = round(cur_m, 1)
+        if flight_state["cashed_out"]:
+            break
+        if av_msg and getattr(av_msg, "edit_text", None):
+            try:
+                await av_msg.edit_text(
+                    f"🚀 <b>Solo Aviator</b> · Bet: <code>{bet}</code>\n"
+                    f"<code>{format_aviator_plane_bar(cur_m)}</code>\n"
+                    f"⚡ Crash se pehle <b>Cash Out</b> dabao!",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup(
+                        [[stylish_btn(f"💸 Cash Out ({cur_m:.1f}x)", f"av_cash:{solo_id}", "success")]]
+                    ),
+                )
+            except (BadRequest, TelegramError):
+                pass
+        await asyncio.sleep(AVIATOR_STEP_SEC)
+        cur_m = round(cur_m + AVIATOR_STEP_INC, 1)
+
+    flight_state["active"] = False
+    ROUNDS_BY_ID.pop(solo_id, None)
+
+    if av_msg and getattr(av_msg, "edit_text", None):
+        if flight_state["cashed_out"]:
+            c_mult = flight_state["cash_mult"]
+            payout = flight_state["payout"]
+            cur_doc = db.get_user(user_id) or {}
+            final_b = int(cur_doc.get("coins", bal))
+            try:
+                await av_msg.edit_text(
+                    f"✅ <b>Cashed Out @ <code>{c_mult:.1f}x</code>!</b> (Crash: <code>{crash_m:.1f}x</code>)\n"
+                    f"<code>{format_aviator_plane_bar(c_mult, cashed_out=True)}</code>\n"
+                    f"💰 Payout: <b>+{payout}</b> · Bal: <code>{final_b}</code>",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=post_game_keyboard("menu_aviator"),
+                )
+            except (BadRequest, TelegramError):
+                pass
+        else:
+            cur_doc = db.get_user(user_id) or {}
+            final_b = int(cur_doc.get("coins", bal))
+            try:
+                await av_msg.edit_text(
+                    f"💥 <b>Crashed @ <code>{crash_m:.1f}x</code>!</b>\n"
+                    f"<code>{format_aviator_plane_bar(crash_m, crashed=True)}</code>\n"
+                    f"💸 Loss: <b>-{bet}</b> · Bal: <code>{final_b}</code>",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=post_game_keyboard("menu_aviator"),
+                )
+            except (BadRequest, TelegramError):
+                pass
         try:
             bot_ref = getattr(getattr(send_fn, "__closure__", [None])[0], "cell_contents", None)
             if hasattr(bot_ref, "message") and getattr(bot_ref.message, "get_bot", None):
@@ -1382,13 +1598,7 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
     round_obj["flight"] = flight_state
 
     def build_flight_track(mult_val: float, crashed: bool = False) -> str:
-        span = max(0.1, AVIATOR_MAX_MULTIPLIER - AVIATOR_MIN_MULTIPLIER)
-        ratio = max(0.0, min(1.0, (mult_val - AVIATOR_MIN_MULTIPLIER) / span))
-        steps = max(1, int(round(ratio * 8)))
-        trail = "─" * steps
-        if crashed:
-            return f"🛫{trail}💥 Crash @ {mult_val:.1f}x"
-        return f"🛫{trail}✈️ {mult_val:.1f}x"
+        return format_aviator_plane_bar(mult_val, crashed=crashed)
 
     cur_mult = AVIATOR_MIN_MULTIPLIER
     while cur_mult <= crash_mult + 1e-9:
@@ -1446,6 +1656,7 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
             message_id=msg_id,
             text="\n".join(summary_lines),
             parse_mode=ParseMode.HTML,
+            reply_markup=post_game_keyboard("menu_aviator"),
         )
         schedule_delete_messages(app.bot, chat_id, [msg_id], AUTO_DELETE_RESULT_SEC)
     except (BadRequest, TelegramError):
@@ -1469,13 +1680,21 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
     bets: Dict[int, Dict[str, Any]] = round_obj.get("bets", {})
     msg_id = round_obj["message_id"]
 
-    if not bets:
+    if len(bets) < 2:
+        for uid, bdata in bets.items():
+            db.adjust_coins(uid, int(bdata["bet"]), chat_id=chat_id, name=bdata["name"])
+        reason_txt = (
+            "kisi ne bet lock nahi ki."
+            if not bets
+            else "kam se kam <b>2 players</b> chahiye the — bet refund kar di gayi."
+        )
         try:
             await app.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=msg_id,
-                text=f"⏱️ <b>{game_key.upper()}</b> — {ROUND_SECONDS}s round khatam, kisi ne bet lock nahi ki.",
+                text=f"⏱️ <b>{game_key.upper()}</b> — {ROUND_SECONDS}s round khatam, {reason_txt}",
                 parse_mode=ParseMode.HTML,
+                reply_markup=post_game_keyboard(f"pick_game:{game_key}"),
             )
             schedule_delete_messages(app.bot, chat_id, [msg_id], AUTO_DELETE_RESULT_SEC)
         except (BadRequest, TelegramError):
@@ -1590,6 +1809,7 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
             message_id=msg_id,
             text="\n".join(result_lines),
             parse_mode=ParseMode.HTML,
+            reply_markup=post_game_keyboard(f"pick_game:{game_key}"),
         )
         schedule_delete_messages(app.bot, chat_id, [msg_id], AUTO_DELETE_RESULT_SEC)
     except (BadRequest, TelegramError):
@@ -1706,33 +1926,53 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message:
         return
-    await update.message.reply_text(help_text(), parse_mode=ParseMode.HTML)
+    cid = update.effective_chat.id if update.effective_chat else update.message.chat_id
+    m = await update.message.reply_text(help_text(), parse_mode=ParseMode.HTML)
+    schedule_delete_messages(context.bot, cid, [m.message_id], STALE_UI_DELETE_SEC)
+
+
+async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    u = update.effective_user
+    cid = update.effective_chat.id if update.effective_chat else update.message.chat_id
+    m = await update.message.reply_text(
+        format_profile_card(u.id, u.first_name, u.username),
+        parse_mode=ParseMode.HTML,
+    )
+    schedule_delete_messages(context.bot, cid, [m.message_id], STALE_UI_DELETE_SEC)
 
 
 async def cmd_bal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
     u = update.effective_user
-    await update.message.reply_text(
+    cid = update.effective_chat.id if update.effective_chat else update.message.chat_id
+    m = await update.message.reply_text(
         format_balance_card(u.id, u.first_name, u.username),
         parse_mode=ParseMode.HTML,
     )
+    schedule_delete_messages(context.bot, cid, [m.message_id], STALE_UI_DELETE_SEC)
 
 
 async def cmd_daily(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
     u = update.effective_user
+    cid = update.effective_chat.id if update.effective_chat else update.message.chat_id
     _, msg = await claim_daily_logic(u.id, u.first_name, u.username)
-    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+    m = await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+    schedule_delete_messages(context.bot, cid, [m.message_id], STALE_UI_DELETE_SEC)
 
 
 async def cmd_refill(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
     u = update.effective_user
+    cid = update.effective_chat.id if update.effective_chat else update.message.chat_id
     _, msg = await claim_refill_logic(u.id, u.first_name, u.username)
-    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+    m = await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+    schedule_delete_messages(context.bot, cid, [m.message_id], STALE_UI_DELETE_SEC)
 
 
 async def cmd_ref(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1788,16 +2028,19 @@ async def cmd_give(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_top(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message:
         return
+    cid = update.effective_chat.id if update.effective_chat else update.message.chat_id
     rows = db.global_top(10)
     if not rows:
-        await update.message.reply_text("🌍 Leaderboard abhi khali hai.")
+        m = await update.message.reply_text("🌍 Leaderboard abhi khali hai.")
+        schedule_delete_messages(context.bot, cid, [m.message_id], STALE_UI_DELETE_SEC)
         return
     medals = {0: "🥇", 1: "🥈", 2: "🥉"}
     lines = ["🌍 <b>Global Rank Top 10</b>", ""]
     for idx, r in enumerate(rows):
         prefix = medals.get(idx, f"{idx + 1}.")
         lines.append(f"{prefix} <b>{r.get('first_name', 'Player')}</b> — <code>{int(r.get('coins', 0))}</code> coins")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+    m = await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+    schedule_delete_messages(context.bot, cid, [m.message_id], STALE_UI_DELETE_SEC)
 
 
 async def cmd_gtop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1809,14 +2052,16 @@ async def cmd_gtop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     rows = db.group_top(chat.id, 10)
     if not rows:
-        await update.message.reply_text("👥 Is group ka leaderboard abhi khali hai.")
+        m = await update.message.reply_text("👥 Is group ka leaderboard abhi khali hai.")
+        schedule_delete_messages(context.bot, chat.id, [m.message_id], STALE_UI_DELETE_SEC)
         return
     medals = {0: "🥇", 1: "🥈", 2: "🥉"}
     lines = [f"👥 <b>{chat.title or 'Group'} Top 10</b>", ""]
     for idx, r in enumerate(rows):
         prefix = medals.get(idx, f"{idx + 1}.")
         lines.append(f"{prefix} <b>{r.get('name', 'Player')}</b> — <code>{int(r.get('net_coins', 0))}</code> net")
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+    m = await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+    schedule_delete_messages(context.bot, chat.id, [m.message_id], STALE_UI_DELETE_SEC)
 
 
 async def cmd_mines(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1826,7 +2071,7 @@ async def cmd_mines(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     user_doc = db.ensure_user(u.id, u.first_name, u.username)
     PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": "mines_bet", "bombs": 4}
-    await update.message.reply_text(
+    m = await update.message.reply_text(
         "💣 <b>Mines</b> — Bombs ya bet amount chuno (ya number type karo):",
         parse_mode=ParseMode.HTML,
         reply_markup=bet_amounts_keyboard(
@@ -1835,6 +2080,7 @@ async def cmd_mines(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             extra_rows=[[stylish_btn(f"{b} 💣", f"mines_bombs:{b}", "danger") for b in MINES_BOMB_CHOICES]],
         ),
     )
+    schedule_delete_messages(context.bot, chat_id, [m.message_id], STALE_UI_DELETE_SEC)
 
 
 # ==============================================================================
@@ -2074,23 +2320,38 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if data == "do_daily":
             ok, msg = await claim_daily_logic(u.id, u.first_name, u.username)
             await query.answer("Claimed!" if ok else "Cooldown", show_alert=not ok)
-            await reply_cb(msg)
+            m_info = await reply_cb(msg)
+            if m_info and getattr(m_info, "message_id", None):
+                schedule_delete_messages(context.application.bot, chat_id, [m_info.message_id], STALE_UI_DELETE_SEC)
             return
 
         if data == "do_refill":
             ok, msg = await claim_refill_logic(u.id, u.first_name, u.username)
             await query.answer("Refilled!" if ok else "Cooldown", show_alert=not ok)
-            await reply_cb(msg)
+            m_info = await reply_cb(msg)
+            if m_info and getattr(m_info, "message_id", None):
+                schedule_delete_messages(context.application.bot, chat_id, [m_info.message_id], STALE_UI_DELETE_SEC)
             return
 
         if data == "menu_bal":
             await query.answer()
-            await reply_cb(format_balance_card(u.id, u.first_name, u.username))
+            m_info = await reply_cb(format_balance_card(u.id, u.first_name, u.username))
+            if m_info and getattr(m_info, "message_id", None):
+                schedule_delete_messages(context.application.bot, chat_id, [m_info.message_id], STALE_UI_DELETE_SEC)
+            return
+
+        if data == "menu_profile":
+            await query.answer()
+            m_info = await reply_cb(format_profile_card(u.id, u.first_name, u.username))
+            if m_info and getattr(m_info, "message_id", None):
+                schedule_delete_messages(context.application.bot, chat_id, [m_info.message_id], STALE_UI_DELETE_SEC)
             return
 
         if data == "menu_help":
             await query.answer()
-            await reply_cb(help_text())
+            m_info = await reply_cb(help_text())
+            if m_info and getattr(m_info, "message_id", None):
+                schedule_delete_messages(context.application.bot, chat_id, [m_info.message_id], STALE_UI_DELETE_SEC)
             return
 
         if data == "menu_top":
@@ -2100,46 +2361,68 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             lines = ["🌍 <b>Global Rank Top 10</b>", ""]
             for idx, r in enumerate(rows):
                 lines.append(f"{medals.get(idx, f'{idx + 1}.')} <b>{r.get('first_name', 'Player')}</b> — <code>{int(r.get('coins', 0))}</code> coins")
-            await reply_cb("\n".join(lines))
+            m_info = await reply_cb("\n".join(lines))
+            if m_info and getattr(m_info, "message_id", None):
+                schedule_delete_messages(context.application.bot, chat_id, [m_info.message_id], STALE_UI_DELETE_SEC)
             return
 
         if data == "menu_gtop":
             await query.answer()
             if is_private:
-                await reply_cb("👥 Group Top ke liye kisi group mein <code>/gtop</code> chalao.")
+                m_info = await reply_cb("👥 Group Top ke liye kisi group mein <code>/gtop</code> chalao.")
+                if m_info and getattr(m_info, "message_id", None):
+                    schedule_delete_messages(context.application.bot, chat_id, [m_info.message_id], STALE_UI_DELETE_SEC)
                 return
             rows = db.group_top(chat_id, 10)
             medals = {0: "🥇", 1: "🥈", 2: "🥉"}
             lines = [f"👥 <b>{chat.title or 'Group'} Top 10</b>", ""]
             for idx, r in enumerate(rows):
                 lines.append(f"{medals.get(idx, f'{idx + 1}.')} <b>{r.get('name', 'Player')}</b> — <code>{int(r.get('net_coins', 0))}</code> net")
-            await reply_cb("\n".join(lines))
+            m_info = await reply_cb("\n".join(lines))
+            if m_info and getattr(m_info, "message_id", None):
+                schedule_delete_messages(context.application.bot, chat_id, [m_info.message_id], STALE_UI_DELETE_SEC)
+            return
+
+        if data == "menu_ttt":
+            await query.answer()
+            m_ttt = await reply_cb(
+                "❎ <b>Tic Tac Toe</b> — Board size chuno:\n• <code>3×3</code>: 2–3 players\n• <code>4×4</code>: 2–4 players\n• <code>5×5</code>: 2–6 players",
+                reply_markup=ttt_size_keyboard(),
+            )
+            if m_ttt and getattr(m_ttt, "message_id", None):
+                schedule_delete_messages(context.application.bot, chat_id, [m_ttt.message_id], STALE_UI_DELETE_SEC)
             return
 
         if data == "menu_mines":
             await query.answer()
             PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": "mines_bet", "bombs": 4}
-            await reply_cb("💣 <b>Mines</b> — Kitne bombs chahiye?", reply_markup=mines_bombs_keyboard())
+            m_info = await reply_cb("💣 <b>Mines</b> — Kitne bombs chahiye?", reply_markup=mines_bombs_keyboard())
+            if m_info and getattr(m_info, "message_id", None):
+                schedule_delete_messages(context.application.bot, chat_id, [m_info.message_id], STALE_UI_DELETE_SEC)
             return
 
         if data.startswith("mines_bombs:"):
             await query.answer()
             bombs = int(data.split(":", 1)[1])
             PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": "mines_bet", "bombs": bombs}
-            await reply_cb(
+            m_info = await reply_cb(
                 f"💣 <b>{bombs} Mines</b> selected — Bet amount chuno (ya number type karo):",
                 reply_markup=bet_amounts_keyboard(int(user_doc.get("coins", 0)), f"sbet:mines:{bombs}"),
             )
+            if m_info and getattr(m_info, "message_id", None):
+                schedule_delete_messages(context.application.bot, chat_id, [m_info.message_id], STALE_UI_DELETE_SEC)
             return
 
         if data == "menu_aviator":
             await query.answer()
             if is_private:
                 PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": "aviator_solo_bet"}
-                await reply_cb(
+                m_info = await reply_cb(
                     "🚀 <b>Solo Aviator</b> — Bet amount chuno (ya number type karo):",
                     reply_markup=bet_amounts_keyboard(int(user_doc.get("coins", 0)), "sbet:aviator:0"),
                 )
+                if m_info and getattr(m_info, "message_id", None):
+                    schedule_delete_messages(context.application.bot, chat_id, [m_info.message_id], STALE_UI_DELETE_SEC)
             else:
                 await start_group_round(context.application, chat_id, u.id, u.first_name, "aviator", reply_cb)
             return
@@ -2149,12 +2432,26 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             game_key = data.split(":", 1)[1]
             if is_private:
                 PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": f"solo_game:{game_key}", "choice": None}
-                await reply_cb(
-                    f"🎮 <b>{game_key.upper()}</b> — Bet amount chuno (ya number type karo):",
-                    reply_markup=bet_amounts_keyboard(int(user_doc.get("coins", 0)), f"sbet:{game_key}:0"),
+                m_ch = await reply_cb(
+                    f"🎮 <b>{game_key.upper()}</b> — Pehle apni choice chuno:",
+                    reply_markup=solo_choice_keyboard(game_key),
                 )
+                if m_ch and getattr(m_ch, "message_id", None):
+                    schedule_delete_messages(context.application.bot, chat_id, [m_ch.message_id], STALE_UI_DELETE_SEC)
             else:
                 await start_group_round(context.application, chat_id, u.id, u.first_name, game_key, reply_cb)
+            return
+
+        if data.startswith("schoice:"):
+            await query.answer()
+            _, gkey, ch_val = data.split(":", 2)
+            PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": f"solo_game:{gkey}", "choice": ch_val}
+            m_bet = await reply_cb(
+                f"🎮 <b>{gkey.upper()}</b> · Pick: <b>{ch_val}</b>\nBet amount chuno (ya number type karo):",
+                reply_markup=bet_amounts_keyboard(int(user_doc.get("coins", 0)), f"sbet:{gkey}:0"),
+            )
+            if m_bet and getattr(m_bet, "message_id", None):
+                schedule_delete_messages(context.application.bot, chat_id, [m_bet.message_id], STALE_UI_DELETE_SEC)
             return
 
         if data.startswith("sbet:"):
@@ -2281,6 +2578,22 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 await query.answer("Flight end ho chuki hai.", show_alert=True)
                 return
 
+            if flight.get("solo"):
+                if flight.get("user_id") != u.id:
+                    await query.answer("Ye flight sirf iske player ki hai!", show_alert=True)
+                    return
+                if flight.get("cashed_out"):
+                    await query.answer("Pehle hi Cash Out kar chuke ho!", show_alert=True)
+                    return
+                mult = float(flight["mult"])
+                payout = int(round(int(flight["bet"]) * mult))
+                flight["cashed_out"] = True
+                flight["cash_mult"] = mult
+                flight["payout"] = payout
+                db.adjust_coins(u.id, payout, chat_id=chat_id, name=u.first_name, won_delta=1, payout_amount=payout)
+                await query.answer(f"Cash Out @ {mult:.1f}x (+{payout})!")
+                return
+
             pdata = flight["players"].get(u.id)
             if not pdata:
                 await query.answer("Is flight mein tumhari bet nahi hai.", show_alert=True)
@@ -2306,6 +2619,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 try:
                     await query.message.edit_text(
                         f"🚀 <b>Aviator Live:</b> <code>{mult:.1f}x</code>\n"
+                        f"<code>{format_aviator_plane_bar(mult)}</code>\n"
                         f"⚡ Crash hone se pehle Cash Out dabao!\n\n"
                         f"{format_aviator_cashout_feed(flight)}",
                         parse_mode=ParseMode.HTML,
@@ -2438,26 +2752,33 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     pass
             return
 
-        if data == "start_ttt5":
+        if data.startswith("ttt_start:"):
             await query.answer()
             if is_private:
-                await reply_cb("❎ <b>5x5 Tic Tac Toe</b> group chat ke liye best hai—kisi group mein yeh button dabao.")
+                await reply_cb("❎ <b>Tic Tac Toe</b> group chat ke liye best hai—kisi group mein yeh button dabao.")
                 return
             if chat_id in ACTIVE_TTT5:
-                await reply_cb("⚠️ Is group mein 5x5 Tic Tac Toe pehle se chal raha hai.")
+                await reply_cb("⚠️ Is group mein Tic Tac Toe pehle se chal raha hai.")
                 return
 
-            entry_bet = 100
+            size = int(data.split(":", 1)[1])
+            cfg = TTT_CONFIG.get(size, TTT_CONFIG[5])
+            max_p = int(cfg["max_players"])
+            line_len = int(cfg["line_len"])
+            entry_bet = int(cfg["pot_bet"])
             bal = db.adjust_coins(u.id, -entry_bet, chat_id=chat_id, name=u.first_name, played_delta=1)
             if bal is None:
-                await reply_cb("❌ 5x5 Tic Tac Toe start karne ke liye kam se kam <b>100</b> coins chahiye.")
+                await reply_cb(f"❌ Tic Tac Toe start karne ke liye kam se kam <b>{entry_bet}</b> coins chahiye.")
                 return
 
             game = {
                 "chat_id": chat_id,
+                "size": size,
+                "max_players": max_p,
+                "line_len": line_len,
                 "bet": entry_bet,
                 "status": "joining",
-                "board": [None] * 25,
+                "board": [None] * (size * size),
                 "players": [{"user_id": u.id, "name": u.first_name, "username": u.username or "", "mark": TTT_MARKS[0]}],
                 "turn_idx": 0,
                 "turn_num": 0,
@@ -2465,17 +2786,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             }
             ACTIVE_TTT5[chat_id] = game
             msg = await reply_cb(
-                f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{entry_bet}</code> coins\n"
-                f"{format_ttt5_roster(game)}\n"
+                f"❎ <b>{size}×{size} Tic Tac Toe</b> · Entry: <code>{entry_bet}</code> coins\n"
+                f"{format_ttt_roster(game)}\n"
                 f"⏳ Join karne ke liye <b>{TTT_JOIN_SECONDS}s</b> bache hain!",
-                reply_markup=build_ttt5_keyboard(game, finished=False),
+                reply_markup=build_ttt_keyboard(game, finished=False),
             )
             if msg and getattr(msg, "message_id", None):
                 game["message_id"] = msg.message_id
-                asyncio.create_task(ttt5_join_countdown(context.application, chat_id, msg.message_id))
+                asyncio.create_task(ttt_join_countdown(context.application, chat_id, msg.message_id))
             return
 
-        if data == "ttt5_join":
+        if data == "ttt_join":
             game = ACTIVE_TTT5.get(chat_id)
             if not game or game.get("status") != "joining":
                 await query.answer("Join time khatam ho chuka hai.", show_alert=True)
@@ -2483,8 +2804,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if any(p["user_id"] == u.id for p in game["players"]):
                 await query.answer("Tum pehle se join kar chuke ho!", show_alert=True)
                 return
-            if len(game["players"]) >= TTT_MAX_PLAYERS:
-                await query.answer("Max players (6) full ho chuke hain.", show_alert=True)
+            max_p = int(game.get("max_players", TTT_MAX_PLAYERS))
+            if len(game["players"]) >= max_p:
+                await query.answer(f"Max players ({max_p}) full ho chuke hain.", show_alert=True)
                 return
 
             bal = db.adjust_coins(u.id, -int(game["bet"]), chat_id=chat_id, name=u.first_name, played_delta=1)
@@ -2496,20 +2818,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             game["players"].append({"user_id": u.id, "name": u.first_name, "username": u.username or "", "mark": mark})
             await query.answer(f"Joined as {mark}!")
 
+            size = int(game.get("size", 5))
             if query.message:
                 try:
                     await query.message.edit_text(
-                        f"❎ <b>5x5 Tic Tac Toe</b> · Entry: <code>{game['bet']}</code> coins\n"
-                        f"{format_ttt5_roster(game)}\n"
+                        f"❎ <b>{size}×{size} Tic Tac Toe</b> · Entry: <code>{game['bet']}</code> coins\n"
+                        f"{format_ttt_roster(game)}\n"
                         f"⏳ Join karne ke liye <b>{TTT_JOIN_SECONDS}s</b> window chal rahi hai!",
                         parse_mode=ParseMode.HTML,
-                        reply_markup=build_ttt5_keyboard(game, finished=False),
+                        reply_markup=build_ttt_keyboard(game, finished=False),
                     )
                 except (BadRequest, TelegramError):
                     pass
             return
 
-        if data.startswith("ttt5_move:"):
+        if data.startswith("ttt_move:"):
             game = ACTIVE_TTT5.get(chat_id)
             if not game or game.get("status") != "active":
                 await query.answer("Match active nahi hai.", show_alert=True)
@@ -2531,23 +2854,24 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await query.answer("Move locked!")
 
             if all(x is not None for x in game["board"]):
-                await finish_ttt5_game(context.application, chat_id, "Board Full")
+                await finish_ttt_game(context.application, chat_id, "Board Full")
                 return
 
+            size = int(game.get("size", 5))
             next_p = players[game["turn_idx"] % len(players)]
             if query.message:
                 try:
                     await query.message.edit_text(
-                        f"❎ <b>5x5 Tic Tac Toe</b>\n"
-                        f"{format_ttt5_roster(game)}\n"
+                        f"❎ <b>{size}×{size} Tic Tac Toe</b>\n"
+                        f"{format_ttt_roster(game)}\n"
                         f"🎯 Turn: {next_p['mark']} {mention_user(next_p['user_id'], next_p['name'], next_p.get('username'))} ({TTT_TURN_SECONDS}s)",
                         parse_mode=ParseMode.HTML,
-                        reply_markup=build_ttt5_keyboard(game, finished=False),
+                        reply_markup=build_ttt_keyboard(game, finished=False),
                     )
                 except (BadRequest, TelegramError):
                     pass
 
-            asyncio.create_task(ttt5_turn_watcher(context.application, chat_id, game["turn_num"]))
+            asyncio.create_task(ttt_turn_watcher(context.application, chat_id, game["turn_num"]))
             return
 
     except (ValueError, IndexError):
@@ -2615,6 +2939,7 @@ MEMBER_COMMANDS = [
     BotCommand("start", "Main menu kholein"),
     BotCommand("help", "Simple game & coin guide"),
     BotCommand("bal", "Apna balance aur stats dekhein"),
+    BotCommand("profile", "Apna player profile dekhein"),
     BotCommand("daily", "Har 24h mein 2000 coins lein"),
     BotCommand("refill", "Har 30m mein 250 coins lein"),
     BotCommand("ref", "Apna invite link lein"),
@@ -2656,6 +2981,7 @@ def main() -> None:
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("bal", cmd_bal))
+    app.add_handler(CommandHandler("profile", cmd_profile))
     app.add_handler(CommandHandler("daily", cmd_daily))
     app.add_handler(CommandHandler("refill", cmd_refill))
     app.add_handler(CommandHandler("ref", cmd_ref))
