@@ -99,9 +99,19 @@ def run_health_server() -> None:
 def stylish_btn(
     text: str,
     callback_data: str,
-    tone: str = "primary",
+    tone: str = "primary",  # "primary" (blue) | "success" (green) | "danger" (red) | "muted" (none)
 ) -> InlineKeyboardButton:
-    return InlineKeyboardButton(text=text, callback_data=callback_data)
+    style_map = {
+        "primary": "primary",
+        "success": "success",
+        "danger": "danger",
+        "muted": None,
+    }
+    chosen_style = style_map.get(tone, "primary")
+    kwargs: Dict[str, Any] = {}
+    if chosen_style:
+        kwargs["api_kwargs"] = {"style": chosen_style}
+    return InlineKeyboardButton(text=text, callback_data=callback_data, **kwargs)
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
@@ -1547,16 +1557,12 @@ async def resolve_solo_aviator(
     flight_state = {
         "solo": True,
         "user_id": user_id,
-        "name": name,
-        "username": username or "",
-        "chat_id": chat_id,
         "bet": bet,
         "active": True,
         "mult": AVIATOR_MIN_MULTIPLIER,
         "cashed_out": False,
         "cash_mult": 0.0,
         "payout": 0,
-        "message_id": 0,
     }
     ROUNDS_BY_ID[solo_id] = {"id": solo_id, "game": "aviator", "flight": flight_state}
 
@@ -1569,8 +1575,6 @@ async def resolve_solo_aviator(
             [[stylish_btn(f"💸 Cash Out ({AVIATOR_MIN_MULTIPLIER:.1f}x)", f"av_cash:{solo_id}", "success")]]
         ),
     )
-    if av_msg and getattr(av_msg, "message_id", None):
-        flight_state["message_id"] = int(av_msg.message_id)
 
     cur_m = AVIATOR_MIN_MULTIPLIER
     while cur_m <= crash_m + 1e-9:
@@ -1590,7 +1594,7 @@ async def resolve_solo_aviator(
                 )
             except BadRequest as exc:
                 if "message is not modified" not in str(exc).lower():
-                    logger.debug("Solo aviator edit error: %s", exc)
+                    pass
             except TelegramError:
                 pass
         await asyncio.sleep(AVIATOR_STEP_SEC)
@@ -2726,7 +2730,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     return
                 if not flight.get("active"):
                     try:
-                        await query.answer("Flight crash ho chuki hai ya khatam ho gayi.", show_alert=True)
+                        await query.answer("Flight end ho chuki hai.", show_alert=True)
                     except BadRequest:
                         pass
                     return
@@ -2736,45 +2740,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 flight["active"] = False
                 flight["cash_mult"] = mult
                 flight["payout"] = payout
-                ROUNDS_BY_ID.pop(round_id, None)
-                updated_bal = db.adjust_coins(
-                    u.id,
-                    payout,
-                    chat_id=chat_id,
-                    name=u.first_name,
-                    won_delta=1,
-                    payout_amount=payout,
-                )
-                cur_doc = db.get_user(u.id) or {}
-                bal_now = int(updated_bal if updated_bal is not None else cur_doc.get("coins", 0))
+                db.adjust_coins(u.id, payout, chat_id=chat_id, name=u.first_name, won_delta=1, payout_amount=payout)
                 try:
-                    await query.answer(f"✅ Cash Out @ {mult:.1f}x (+{payout} coins)!")
+                    await query.answer(f"Cash Out @ {mult:.1f}x (+{payout})!")
                 except BadRequest:
                     pass
-                target_mid = flight.get("message_id") or (query.message.message_id if query.message else 0)
-                target_cid = flight.get("chat_id") or chat_id
-                cash_text = (
-                    f"✅ <b>Cashed Out @ <code>{mult:.1f}x</code>!</b>\n"
-                    f"<code>{format_aviator_plane_bar(mult, cashed_out=True)}</code>\n"
-                    f"💰 Payout: <b>+{payout}</b> · Bal: <code>{bal_now}</code>"
-                )
-                edited = False
                 if query.message:
+                    cur_doc = db.get_user(u.id) or {}
+                    bal_now = int(cur_doc.get("coins", 0))
                     try:
                         await query.message.edit_text(
-                            cash_text,
-                            parse_mode=ParseMode.HTML,
-                            reply_markup=post_game_keyboard("menu_aviator"),
-                        )
-                        edited = True
-                    except (BadRequest, TelegramError):
-                        pass
-                if not edited and target_mid:
-                    try:
-                        await context.application.bot.edit_message_text(
-                            chat_id=target_cid,
-                            message_id=target_mid,
-                            text=cash_text,
+                            f"✅ <b>Cashed Out @ <code>{mult:.1f}x</code>!</b>\n"
+                            f"<code>{format_aviator_plane_bar(mult, cashed_out=True)}</code>\n"
+                            f"💰 Payout: <b>+{payout}</b> · Bal: <code>{bal_now}</code>",
                             parse_mode=ParseMode.HTML,
                             reply_markup=post_game_keyboard("menu_aviator"),
                         )
