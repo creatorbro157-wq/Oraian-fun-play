@@ -1,4 +1,4 @@
-import asyncio
+ import asyncio
 import logging
 import os
 import random
@@ -1548,7 +1548,7 @@ def format_aviator_plane_bar(mult_val: float, crashed: bool = False, cashed_out:
     dots = max(1, min(8, int(round(ratio * 8))))
     bar = "•" * dots
     if crashed:
-        return f"[{bar}] 💥 {mult_val:.1f}x"
+        return f"[{bar}] 💥 BLAST @ {mult_val:.1f}x"
     if cashed_out:
         return f"[{bar}] ✅ {mult_val:.1f}x"
     return f"[{bar}] ✈️ {mult_val:.1f}x"
@@ -1751,6 +1751,7 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
     flight_state = {
         "active": True,
         "mult": AVIATOR_MIN_MULTIPLIER,
+        "crash_mult": crash_mult,
         "players": {
             uid: {
                 "user_id": uid,
@@ -1774,25 +1775,33 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
     while cur_mult <= crash_mult + 1e-9:
         if (time.time() - float(round_obj.get("created_at", time.time()))) > TIMER_GAME_MAX_AGE_SEC:
             break
-        flight_state["mult"] = round(cur_mult, 1)
-        live_kb = InlineKeyboardMarkup(
-            [
-                [stylish_btn(f"💸 Cash Out ({cur_mult:.1f}x)", f"av_cash:{round_obj['id']}", "success")],
+        cur_rounded = round(cur_mult, 1)
+        flight_state["mult"] = cur_rounded
+        is_blast_step = abs(cur_rounded - crash_mult) < 1e-6
+        if is_blast_step:
+            flight_state["active"] = False
+            live_kb = None
+            status_line = f"💥 <b>BLAST! Plane <code>{crash_mult:.1f}x</code> par phat gaya!</b> (Sabka result neeche dekho)"
+        else:
+            live_kb = InlineKeyboardMarkup(
                 [
-                    stylish_btn("100", f"rbet:{round_obj['id']}:flight:100", "primary"),
-                    stylish_btn("250", f"rbet:{round_obj['id']}:flight:250", "primary"),
-                    stylish_btn("500", f"rbet:{round_obj['id']}:flight:500", "primary"),
-                ],
-            ]
-        )
+                    [stylish_btn(f"💸 Cash Out ({cur_rounded:.1f}x)", f"av_cash:{round_obj['id']}", "success")],
+                    [
+                        stylish_btn("100", f"rbet:{round_obj['id']}:flight:100", "primary"),
+                        stylish_btn("250", f"rbet:{round_obj['id']}:flight:250", "primary"),
+                        stylish_btn("500", f"rbet:{round_obj['id']}:flight:500", "primary"),
+                    ],
+                ]
+            )
+            status_line = "⚡ Crash se pehle Cash Out dabao — baaki log bhi bet laga sakte hain!"
         try:
             await app.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=msg_id,
                 text=(
-                    f"🚀 <b>Aviator Live:</b> <code>{cur_mult:.1f}x</code>\n"
-                    f"<code>{build_flight_track(cur_mult, crashed=False)}</code>\n"
-                    f"⚡ Crash se pehle Cash Out dabao — baaki log bhi bet laga sakte hain!\n\n"
+                    f"{'💥 <b>Aviator BLAST:</b>' if is_blast_step else '🚀 <b>Aviator Live:</b>'} <code>{cur_rounded:.1f}x</code>\n"
+                    f"<code>{build_flight_track(cur_rounded, crashed=is_blast_step)}</code>\n"
+                    f"{status_line}\n\n"
                     f"{format_aviator_cashout_feed(flight_state)}"
                 ),
                 parse_mode=ParseMode.HTML,
@@ -1800,6 +1809,9 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
             )
         except (BadRequest, TelegramError):
             pass
+        if is_blast_step:
+            await asyncio.sleep(1.2)
+            break
         await asyncio.sleep(AVIATOR_STEP_SEC)
         cur_mult = round(cur_mult + AVIATOR_STEP_INC, 1)
 
@@ -1808,7 +1820,7 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
     unregister_round(chat_id, round_obj["id"])
 
     summary_lines = [
-        f"💥 <b>Aviator Crashed at <code>{crash_mult:.1f}x</code>!</b>",
+        f"💥 <b>BLAST AT <code>{crash_mult:.1f}x</code>! Aviator Crashed!</b>",
         f"<code>{build_flight_track(crash_mult, crashed=True)}</code>",
         "",
         "📋 <b>Final Result (Sabka Ek Saath):</b>",
@@ -1822,7 +1834,7 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
             )
         else:
             summary_lines.append(
-                f"• 💥 {mention_user(uid, pdata['name'], pdata.get('username'))} — Bet <code>{pdata['bet']}</code> | Crash mein reh gaya → <b>-{pdata['bet']}</b> (Bal: <code>{b_val}</code>)"
+                f"• 💥 {mention_user(uid, pdata['name'], pdata.get('username'))} — Bet <code>{pdata['bet']}</code> | Blast (<code>{crash_mult:.1f}x</code>) mein reh gaya → <b>-{pdata['bet']}</b> (Bal: <code>{b_val}</code>)"
             )
     summary_lines.append("")
     summary_lines.append(f"💥 <b>BLASTED AT <code>{crash_mult:.1f}x</code> — Game Khatam!</b>")
@@ -2814,7 +2826,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             flight = round_obj.get("flight") if round_obj else None
             if not round_obj or not flight or not flight.get("active"):
                 try:
-                    await query.answer("Flight end ho chuki hai.", show_alert=True)
+                    await query.answer("Blast ho chuka hai / Flight end ho gayi!", show_alert=True)
                 except BadRequest:
                     pass
                 return
