@@ -60,12 +60,15 @@ TTT_JOIN_SECONDS = 12  # 2x from 6s
 TTT_TURN_SECONDS = 15  # updated from 20s to 15s
 AUTO_DELETE_RESULT_SEC = 10  # auto-delete finished match/result message quickly
 STALE_UI_DELETE_SEC = 20  # auto-delete idle info/bet/selection menus
-TIMER_GAME_MAX_AGE_SEC = 30  # auto-delete stuck timer rounds past 30s
+TIMER_GAME_MAX_AGE_SEC = 35  # auto-delete stuck timer rounds past 35s
 TTT_MAX_AGE_SEC = 90  # auto-delete incomplete/lagged Tic Tac Toe past 1.5 min (90s)
 AVIATOR_STEP_SEC = 0.75
 AVIATOR_STEP_INC = 0.2
 AVIATOR_MIN_MULTIPLIER = 1.0
-AVIATOR_MAX_MULTIPLIER = 7.0
+AVIATOR_MAX_MULTIPLIER = 10.0
+AVIATOR_SAFE_THRESHOLD = 1.5
+AVIATOR_SAFE_RETURN_RATIO = 0.5
+AVIATOR_GUESS_CHOICES = (1.5, 2.0, 3.0, 4.0, 5.0, 7.0, 10.0)
 GUESS_EXACT_MULT = 8.5
 GUESS_NEAR_MULT = 1.5
 MINES_BOMB_CHOICES = (2, 4, 5, 7, 9)
@@ -147,6 +150,25 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
                 stylish_btn("👥 Group Top", "menu_gtop", "primary"),
                 stylish_btn("❓ Help", "menu_help", "muted"),
             ],
+        ]
+    )
+
+
+def aviator_guess_keyboard(bet: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                stylish_btn("1.5x", f"av_guess:{bet}:1.5", "primary"),
+                stylish_btn("2.0x", f"av_guess:{bet}:2.0", "primary"),
+                stylish_btn("3.0x", f"av_guess:{bet}:3.0", "success"),
+                stylish_btn("4.0x", f"av_guess:{bet}:4.0", "success"),
+            ],
+            [
+                stylish_btn("5.0x", f"av_guess:{bet}:5.0", "primary"),
+                stylish_btn("7.0x", f"av_guess:{bet}:7.0", "danger"),
+                stylish_btn("10.0x", f"av_guess:{bet}:10.0", "danger"),
+            ],
+            [stylish_btn("🏠 Menu", "back_menu", "muted")],
         ]
     )
 
@@ -936,7 +958,7 @@ def help_text() -> str:
     return (
         "📖 <b>Quick Game &amp; Coin Guide</b>\n\n"
         "<b>🎯 Games</b>\n"
-        "• <b>Aviator:</b> Plane <code>[•] → [••••••]</code> ke saath <code>1.0x–7.0x</code> tak udta hai. Crash se pehle <b>Cash Out</b> dabao (DM &amp; Group dono mein).\n"
+        "• <b>Aviator:</b> Plane <code>[•] → [••••••]</code> ke saath <code>1.0x–10.0x</code> tak udta hai. DM mein bet lagao aur target multiplier (<code>1.5x–10.0x</code>) guess karo; crash se pehle target touch hua toh win, <code>1.5x+</code> par crash ho toh safe return, aur <code>1.5x</code> se pehle crash par loss.\n"
         "• <b>Mines:</b> <code>2/4/5/7/9</code> bombs chuno, 💎 tiles kholo, kabhi bhi Cash Out karo.\n"
         "• <b>Tic Tac Toe:</b> <code>3×3</code> (2–3P), <code>4×4</code> (2–4P), ya <code>5×5</code> (2–6P) board — <code>12s</code> join &amp; <code>15s</code> turn.\n"
         "• <b>Coin Flip &amp; Rounds:</b> Choice chuno → bet lock karo (group mein min 2 players) → result + Replay/Menu.\n"
@@ -1532,7 +1554,7 @@ def format_aviator_plane_bar(mult_val: float, crashed: bool = False, cashed_out:
     return f"[{bar}] ✈️ {mult_val:.1f}x"
 
 
-async def resolve_solo_aviator(
+async def prompt_aviator_guess(
     chat_id: int,
     user_id: int,
     name: str,
@@ -1543,6 +1565,38 @@ async def resolve_solo_aviator(
     if bet < MIN_BET or bet > MAX_BET:
         await send_fn(f"⚠️ Bet <b>{MIN_BET}</b> se <b>{MAX_BET}</b> ke beech rakho.", parse_mode=ParseMode.HTML)
         return
+    u_doc = db.ensure_user(user_id, name, username)
+    if int(u_doc.get("coins", 0)) < bet:
+        await send_fn("❌ Balance kam hai! <code>/daily</code> ya <code>/refill</code> chalao.", parse_mode=ParseMode.HTML)
+        return
+    PENDING_SOLO_BET[(chat_id, user_id)] = {"mode": "aviator_guess", "bet": bet}
+    await send_fn(
+        f"🚀 <b>DM Aviator Guess</b> · Bet: <code>{bet}</code>\n"
+        f"Ab target multiplier chuno (<code>1.0x–10.0x</code>) ya number type karo (jaise <code>2.4</code>):\n"
+        f"• Target touch hua → Full win (<code>bet × target</code>)\n"
+        f"• Crash <code>1.5x+</code> par hua → Safe 50% wapas\n"
+        f"• Crash <code>1.5x</code> se pehle hua → Poora loss",
+        parse_mode=ParseMode.HTML,
+        reply_markup=aviator_guess_keyboard(bet),
+    )
+
+
+async def resolve_solo_aviator(
+    chat_id: int,
+    user_id: int,
+    name: str,
+    username: Optional[str],
+    bet: int,
+    send_fn: Callable[..., Coroutine[Any, Any, Any]],
+    target_mult: Optional[float] = None,
+) -> None:
+    if bet < MIN_BET or bet > MAX_BET:
+        await send_fn(f"⚠️ Bet <b>{MIN_BET}</b> se <b>{MAX_BET}</b> ke beech rakho.", parse_mode=ParseMode.HTML)
+        return
+    if target_mult is None:
+        target_mult = 2.0
+    target_mult = round(max(AVIATOR_MIN_MULTIPLIER, min(AVIATOR_MAX_MULTIPLIER, float(target_mult))), 1)
+
     db.ensure_user(user_id, name, username)
     bal = db.adjust_coins(user_id, -bet, chat_id=chat_id, name=name, played_delta=1)
     if bal is None:
@@ -1551,46 +1605,29 @@ async def resolve_solo_aviator(
     db.record_last_bet(user_id, bet)
 
     steps_total = int(round((AVIATOR_MAX_MULTIPLIER - AVIATOR_MIN_MULTIPLIER) / AVIATOR_STEP_INC))
-    crash_step = random.randint(5, max(5, steps_total))
+    crash_step = random.randint(0, max(1, steps_total))
     crash_m = round(AVIATOR_MIN_MULTIPLIER + crash_step * AVIATOR_STEP_INC, 1)
-    solo_id = f"solo_av_{user_id}_{int(time.time() * 1000)}"
-    flight_state = {
-        "solo": True,
-        "user_id": user_id,
-        "bet": bet,
-        "active": True,
-        "mult": AVIATOR_MIN_MULTIPLIER,
-        "cashed_out": False,
-        "cash_mult": 0.0,
-        "payout": 0,
-    }
-    ROUNDS_BY_ID[solo_id] = {"id": solo_id, "game": "aviator", "flight": flight_state}
 
     av_msg = await send_fn(
-        f"🚀 <b>Solo Aviator</b> · Bet: <code>{bet}</code>\n"
+        f"🚀 <b>DM Aviator</b> · Bet: <code>{bet}</code> · Target: <code>{target_mult:.1f}x</code>\n"
         f"<code>{format_aviator_plane_bar(AVIATOR_MIN_MULTIPLIER)}</code>\n"
-        f"⚡ Crash se pehle <b>Cash Out</b> dabao!",
+        f"⏳ Plane ud raha hai...",
         parse_mode=ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup(
-            [[stylish_btn(f"💸 Cash Out ({AVIATOR_MIN_MULTIPLIER:.1f}x)", f"av_cash:{solo_id}", "success")]]
-        ),
     )
 
     cur_m = AVIATOR_MIN_MULTIPLIER
+    reached_target = False
     while cur_m <= crash_m + 1e-9:
-        if flight_state.get("cashed_out") or not flight_state.get("active"):
+        if cur_m >= target_mult - 1e-9:
+            reached_target = True
             break
-        flight_state["mult"] = round(cur_m, 1)
         if cur_m > AVIATOR_MIN_MULTIPLIER and av_msg and getattr(av_msg, "edit_text", None):
             try:
                 await av_msg.edit_text(
-                    f"🚀 <b>Solo Aviator</b> · Bet: <code>{bet}</code>\n"
+                    f"🚀 <b>DM Aviator</b> · Bet: <code>{bet}</code> · Target: <code>{target_mult:.1f}x</code>\n"
                     f"<code>{format_aviator_plane_bar(cur_m)}</code>\n"
-                    f"⚡ Crash se pehle <b>Cash Out</b> dabao!",
+                    f"⏳ Plane ud raha hai...",
                     parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup(
-                        [[stylish_btn(f"💸 Cash Out ({cur_m:.1f}x)", f"av_cash:{solo_id}", "success")]]
-                    ),
                 )
             except BadRequest as exc:
                 if "message is not modified" not in str(exc).lower():
@@ -1598,24 +1635,66 @@ async def resolve_solo_aviator(
             except TelegramError:
                 pass
         await asyncio.sleep(AVIATOR_STEP_SEC)
-        if flight_state.get("cashed_out") or not flight_state.get("active"):
-            break
         cur_m = round(cur_m + AVIATOR_STEP_INC, 1)
 
-    was_cashed_out = bool(flight_state.get("cashed_out"))
-    flight_state["active"] = False
-    ROUNDS_BY_ID.pop(solo_id, None)
+    if reached_target:
+        payout = int(round(bet * target_mult))
+        final_b = db.adjust_coins(
+            user_id,
+            payout,
+            chat_id=chat_id,
+            name=name,
+            won_delta=1,
+            payout_amount=payout,
+        )
+        b_val = final_b if final_b is not None else bal + payout
+        if av_msg and getattr(av_msg, "edit_text", None):
+            try:
+                await av_msg.edit_text(
+                    f"🎉 <b>Target Hit @ <code>{target_mult:.1f}x</code>!</b> (Crash: <code>{crash_m:.1f}x</code>)\n"
+                    f"<code>{format_aviator_plane_bar(target_mult, cashed_out=True)}</code>\n"
+                    f"💰 Payout: <b>+{payout}</b> · Bal: <code>{b_val}</code>",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=post_game_keyboard(f"av_guess:{bet}:{target_mult:.1f}", "menu_aviator"),
+                )
+            except (BadRequest, TelegramError):
+                pass
+        return
 
-    if not was_cashed_out and av_msg and getattr(av_msg, "edit_text", None):
-        cur_doc = db.get_user(user_id) or {}
-        final_b = int(cur_doc.get("coins", bal))
+    if crash_m >= AVIATOR_SAFE_THRESHOLD - 1e-9:
+        safe_payout = int(round(bet * AVIATOR_SAFE_RETURN_RATIO))
+        final_b = db.adjust_coins(
+            user_id,
+            safe_payout,
+            chat_id=chat_id,
+            name=name,
+            won_delta=0,
+            payout_amount=safe_payout,
+        )
+        b_val = final_b if final_b is not None else bal + safe_payout
+        if av_msg and getattr(av_msg, "edit_text", None):
+            try:
+                await av_msg.edit_text(
+                    f"🛡️ <b>Crashed @ <code>{crash_m:.1f}x</code></b> (Target: <code>{target_mult:.1f}x</code>)\n"
+                    f"<code>{format_aviator_plane_bar(crash_m, crashed=True)}</code>\n"
+                    f"✨ <code>1.5x</code> se upar tha — Safe Return <b>+{safe_payout}</b> · Bal: <code>{b_val}</code>",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=post_game_keyboard(f"av_guess:{bet}:{target_mult:.1f}", "menu_aviator"),
+                )
+            except (BadRequest, TelegramError):
+                pass
+        return
+
+    cur_doc = db.get_user(user_id) or {}
+    final_b = int(cur_doc.get("coins", bal))
+    if av_msg and getattr(av_msg, "edit_text", None):
         try:
             await av_msg.edit_text(
-                f"💥 <b>Crashed @ <code>{crash_m:.1f}x</code>!</b>\n"
+                f"💥 <b>Crashed @ <code>{crash_m:.1f}x</code>!</b> (Target: <code>{target_mult:.1f}x</code>)\n"
                 f"<code>{format_aviator_plane_bar(crash_m, crashed=True)}</code>\n"
                 f"💸 Loss: <b>-{bet}</b> · Bal: <code>{final_b}</code>",
                 parse_mode=ParseMode.HTML,
-                reply_markup=post_game_keyboard("menu_aviator"),
+                reply_markup=post_game_keyboard(f"av_guess:{bet}:{target_mult:.1f}", "menu_aviator"),
             )
         except (BadRequest, TelegramError):
             pass
@@ -2404,15 +2483,25 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         parse_mode: str = ParseMode.HTML,
         dice_emoji: Optional[str] = None,
     ) -> Any:
-        if not query.message:
-            return None
         if dice_emoji:
+            if query.message:
+                try:
+                    return await query.message.reply_dice(emoji=dice_emoji)
+                except (BadRequest, TelegramError):
+                    pass
             try:
-                return await query.message.reply_dice(emoji=dice_emoji)
+                return await context.application.bot.send_dice(chat_id=chat_id, emoji=dice_emoji)
             except (BadRequest, TelegramError):
-                pass
-        return await query.message.reply_text(
-            text,
+                return None
+        if query.message:
+            return await query.message.reply_text(
+                text,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup,
+            )
+        return await context.application.bot.send_message(
+            chat_id=chat_id,
+            text=text,
             parse_mode=parse_mode,
             reply_markup=reply_markup,
         )
@@ -2532,13 +2621,28 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if is_private:
                 PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": "aviator_solo_bet"}
                 m_info = await reply_cb(
-                    "🚀 <b>Solo Aviator</b> — Bet amount chuno (ya number type karo):",
+                    "🚀 <b>DM Aviator</b> — Pehle bet amount chuno (ya number type karo):",
                     reply_markup=bet_amounts_keyboard(int(user_doc.get("coins", 0)), "sbet:aviator:0"),
                 )
                 if m_info and getattr(m_info, "message_id", None):
                     schedule_delete_messages(context.application.bot, chat_id, [m_info.message_id], STALE_UI_DELETE_SEC)
             else:
                 await start_group_round(context.application, chat_id, u.id, u.first_name, "aviator", reply_cb)
+            return
+
+        if data.startswith("av_guess:"):
+            await query.answer()
+            _, bet_str, mult_str = data.split(":", 2)
+            PENDING_SOLO_BET.pop((chat_id, u.id), None)
+            await resolve_solo_aviator(
+                chat_id,
+                u.id,
+                u.first_name,
+                u.username,
+                int(bet_str),
+                reply_cb,
+                target_mult=float(mult_str),
+            )
             return
 
         if data.startswith("pick_game:"):
@@ -2576,7 +2680,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if mode_key == "mines":
                 await start_mines_game(chat_id, u.id, u.first_name, u.username, amt, int(extra_str), reply_cb)
             elif mode_key == "aviator":
-                await resolve_solo_aviator(chat_id, u.id, u.first_name, u.username, amt, reply_cb)
+                await prompt_aviator_guess(chat_id, u.id, u.first_name, u.username, amt, reply_cb)
             else:
                 default_choice = pending.get("choice")
                 if not default_choice:
@@ -2708,59 +2812,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             round_id = data.split(":", 1)[1]
             round_obj = ROUNDS_BY_ID.get(round_id)
             flight = round_obj.get("flight") if round_obj else None
-            if not round_obj or not flight:
-                try:
-                    await query.answer("Flight end ho chuki hai.", show_alert=True)
-                except BadRequest:
-                    pass
-                return
-
-            if flight.get("solo"):
-                if flight.get("user_id") != u.id:
-                    try:
-                        await query.answer("Ye flight sirf iske player ki hai!", show_alert=True)
-                    except BadRequest:
-                        pass
-                    return
-                if flight.get("cashed_out"):
-                    try:
-                        await query.answer("Pehle hi Cash Out kar chuke ho!", show_alert=True)
-                    except BadRequest:
-                        pass
-                    return
-                if not flight.get("active"):
-                    try:
-                        await query.answer("Flight end ho chuki hai.", show_alert=True)
-                    except BadRequest:
-                        pass
-                    return
-                mult = float(flight.get("mult") or AVIATOR_MIN_MULTIPLIER)
-                payout = int(round(int(flight["bet"]) * mult))
-                flight["cashed_out"] = True
-                flight["active"] = False
-                flight["cash_mult"] = mult
-                flight["payout"] = payout
-                db.adjust_coins(u.id, payout, chat_id=chat_id, name=u.first_name, won_delta=1, payout_amount=payout)
-                try:
-                    await query.answer(f"Cash Out @ {mult:.1f}x (+{payout})!")
-                except BadRequest:
-                    pass
-                if query.message:
-                    cur_doc = db.get_user(u.id) or {}
-                    bal_now = int(cur_doc.get("coins", 0))
-                    try:
-                        await query.message.edit_text(
-                            f"✅ <b>Cashed Out @ <code>{mult:.1f}x</code>!</b>\n"
-                            f"<code>{format_aviator_plane_bar(mult, cashed_out=True)}</code>\n"
-                            f"💰 Payout: <b>+{payout}</b> · Bal: <code>{bal_now}</code>",
-                            parse_mode=ParseMode.HTML,
-                            reply_markup=post_game_keyboard("menu_aviator"),
-                        )
-                    except (BadRequest, TelegramError):
-                        pass
-                return
-
-            if not flight.get("active"):
+            if not round_obj or not flight or not flight.get("active"):
                 try:
                     await query.answer("Flight end ho chuki hai.", show_alert=True)
                 except BadRequest:
@@ -3064,21 +3116,46 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 # ==============================================================================
-# PLAIN TEXT HANDLER (Custom numeric bet input)
+# PLAIN TEXT HANDLER (Custom numeric bet / multiplier input)
 # ==============================================================================
 async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.effective_chat or not update.message or not update.message.text:
         return
     txt = update.message.text.strip()
-    if not txt.isdigit():
-        return
     u = update.effective_user
     chat_id = update.effective_chat.id
-    pending = PENDING_SOLO_BET.pop((chat_id, u.id), None)
+    pending = PENDING_SOLO_BET.get((chat_id, u.id))
     if not pending:
         return
-    amt = int(txt)
+
     mode = pending.get("mode", "")
+    if mode == "aviator_guess":
+        try:
+            target_val = float(txt)
+        except ValueError:
+            return
+        if target_val < AVIATOR_MIN_MULTIPLIER or target_val > AVIATOR_MAX_MULTIPLIER:
+            await update.message.reply_text(
+                f"⚠️ Multiplier <b>{AVIATOR_MIN_MULTIPLIER:.1f}x</b> se <b>{AVIATOR_MAX_MULTIPLIER:.1f}x</b> ke beech rakho.",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        PENDING_SOLO_BET.pop((chat_id, u.id), None)
+        await resolve_solo_aviator(
+            chat_id,
+            u.id,
+            u.first_name,
+            u.username,
+            int(pending.get("bet", 100)),
+            update.message.reply_text,
+            target_mult=target_val,
+        )
+        return
+
+    if not txt.isdigit():
+        return
+    PENDING_SOLO_BET.pop((chat_id, u.id), None)
+    amt = int(txt)
     if mode == "mines_bet":
         await start_mines_game(
             chat_id,
@@ -3090,7 +3167,7 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             update.message.reply_text,
         )
     elif mode == "aviator_solo_bet":
-        await resolve_solo_aviator(
+        await prompt_aviator_guess(
             chat_id,
             u.id,
             u.first_name,
