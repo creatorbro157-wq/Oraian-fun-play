@@ -958,7 +958,7 @@ def help_text() -> str:
     return (
         "📖 <b>Quick Game &amp; Coin Guide</b>\n\n"
         "<b>🎯 Games</b>\n"
-        "• <b>Aviator:</b> Plane <code>[•] → [••••••]</code> ke saath <code>1.0x–10.0x</code> tak udta hai. DM mein bet lagao aur target multiplier (<code>1.5x–10.0x</code>) guess karo; crash se pehle target touch hua toh win, <code>1.5x+</code> par crash ho toh safe return, aur <code>1.5x</code> se pehle crash par loss.\n"
+        "• <b>Aviator:</b> Group mein live cash-out round chalta hai; DM mein bet lagao aur target multiplier (<code>1.5x–10.0x</code>) guess karo — crash se pehle target touch hua toh win, <code>1.5x+</code> par crash ho toh safe 50% return, aur <code>1.5x</code> se pehle crash par loss.\n"
         "• <b>Mines:</b> <code>2/4/5/7/9</code> bombs chuno, 💎 tiles kholo, kabhi bhi Cash Out karo.\n"
         "• <b>Tic Tac Toe:</b> <code>3×3</code> (2–3P), <code>4×4</code> (2–4P), ya <code>5×5</code> (2–6P) board — <code>12s</code> join &amp; <code>15s</code> turn.\n"
         "• <b>Coin Flip &amp; Rounds:</b> Choice chuno → bet lock karo (group mein min 2 players) → result + Replay/Menu.\n"
@@ -1572,7 +1572,7 @@ async def prompt_aviator_guess(
     PENDING_SOLO_BET[(chat_id, user_id)] = {"mode": "aviator_guess", "bet": bet}
     await send_fn(
         f"🚀 <b>DM Aviator Guess</b> · Bet: <code>{bet}</code>\n"
-        f"Ab target multiplier chuno (<code>1.0x–10.0x</code>) ya number type karo (jaise <code>2.4</code>):\n"
+        f"Target multiplier chuno (<code>1.5x–10.0x</code>) ya number type karo (jaise <code>2.4</code>):\n"
         f"• Target touch hua → Full win (<code>bet × target</code>)\n"
         f"• Crash <code>1.5x+</code> par hua → Safe 50% wapas\n"
         f"• Crash <code>1.5x</code> se pehle hua → Poora loss",
@@ -1609,7 +1609,7 @@ async def resolve_solo_aviator(
     crash_m = round(AVIATOR_MIN_MULTIPLIER + crash_step * AVIATOR_STEP_INC, 1)
 
     av_msg = await send_fn(
-        f"🚀 <b>DM Aviator</b> · Bet: <code>{bet}</code> · Target: <code>{target_mult:.1f}x</code>\n"
+        f"🚀 <b>DM Aviator Guess</b> · Bet: <code>{bet}</code> · Target: <code>{target_mult:.1f}x</code>\n"
         f"<code>{format_aviator_plane_bar(AVIATOR_MIN_MULTIPLIER)}</code>\n"
         f"⏳ Plane ud raha hai...",
         parse_mode=ParseMode.HTML,
@@ -1624,7 +1624,7 @@ async def resolve_solo_aviator(
         if cur_m > AVIATOR_MIN_MULTIPLIER and av_msg and getattr(av_msg, "edit_text", None):
             try:
                 await av_msg.edit_text(
-                    f"🚀 <b>DM Aviator</b> · Bet: <code>{bet}</code> · Target: <code>{target_mult:.1f}x</code>\n"
+                    f"🚀 <b>DM Aviator Guess</b> · Bet: <code>{bet}</code> · Target: <code>{target_mult:.1f}x</code>\n"
                     f"<code>{format_aviator_plane_bar(cur_m)}</code>\n"
                     f"⏳ Plane ud raha hai...",
                     parse_mode=ParseMode.HTML,
@@ -2621,7 +2621,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if is_private:
                 PENDING_SOLO_BET[(chat_id, u.id)] = {"mode": "aviator_solo_bet"}
                 m_info = await reply_cb(
-                    "🚀 <b>DM Aviator</b> — Pehle bet amount chuno (ya number type karo):",
+                    "🚀 <b>DM Aviator Guess</b> — Pehle bet amount chuno (ya number type karo):",
                     reply_markup=bet_amounts_keyboard(int(user_doc.get("coins", 0)), "sbet:aviator:0"),
                 )
                 if m_info and getattr(m_info, "message_id", None):
