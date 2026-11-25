@@ -1561,7 +1561,7 @@ async def resolve_solo_aviator(
     db.record_last_bet(user_id, bet)
 
     steps_total = int(round((AVIATOR_MAX_MULTIPLIER - AVIATOR_MIN_MULTIPLIER) / AVIATOR_STEP_INC))
-    crash_step = random.randint(4, max(4, steps_total))
+    crash_step = random.randint(5, max(5, steps_total))
     crash_m = round(AVIATOR_MIN_MULTIPLIER + crash_step * AVIATOR_STEP_INC, 1)
     solo_id = f"solo_av_{user_id}_{int(time.time() * 1000)}"
     flight_state = {
@@ -1591,7 +1591,14 @@ async def resolve_solo_aviator(
         if flight_state.get("cashed_out") or not flight_state.get("active"):
             break
         flight_state["mult"] = round(cur_m, 1)
-        if not flight_state.get("cashed_out") and flight_state.get("active") and av_msg and getattr(av_msg, "edit_text", None):
+        await asyncio.sleep(AVIATOR_STEP_SEC)
+        if flight_state.get("cashed_out") or not flight_state.get("active"):
+            break
+        cur_m = round(cur_m + AVIATOR_STEP_INC, 1)
+        if flight_state.get("cashed_out") or not flight_state.get("active"):
+            break
+        flight_state["mult"] = round(cur_m, 1)
+        if av_msg and getattr(av_msg, "edit_text", None):
             try:
                 await av_msg.edit_text(
                     f"🚀 <b>Solo Aviator</b> · Bet: <code>{bet}</code>\n"
@@ -1607,15 +1614,12 @@ async def resolve_solo_aviator(
                     pass
             except TelegramError:
                 pass
-        if flight_state.get("cashed_out") or not flight_state.get("active"):
-            break
-        await asyncio.sleep(AVIATOR_STEP_SEC)
-        cur_m = round(cur_m + AVIATOR_STEP_INC, 1)
 
+    was_cashed_out = bool(flight_state.get("cashed_out"))
     flight_state["active"] = False
     ROUNDS_BY_ID.pop(solo_id, None)
 
-    if av_msg and getattr(av_msg, "edit_text", None) and not flight_state.get("cashed_out"):
+    if not was_cashed_out and av_msg and getattr(av_msg, "edit_text", None):
         cur_doc = db.get_user(user_id) or {}
         final_b = int(cur_doc.get("coins", bal))
         try:
