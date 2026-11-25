@@ -64,6 +64,8 @@ AVIATOR_STEP_SEC = 0.45
 AVIATOR_STEP_INC = 0.2
 AVIATOR_MIN_MULTIPLIER = 1.0
 AVIATOR_MAX_MULTIPLIER = 7.0
+GUESS_EXACT_MULT = 8.5
+GUESS_NEAR_MULT = 1.5
 MINES_BOMB_CHOICES = (2, 4, 5, 7, 9)
 SLOT_THEMES = {
     "classic": ("🍒 Classic", {"cherry": ("🍒", "2.5x"), "gem": ("💎", "4.0x"), "seven": ("7️⃣", "7.0x")}),
@@ -694,7 +696,6 @@ class Database:
             total_users = len(all_u)
             g_rank = sum(1 for item in all_u if int(item.get("coins", 0)) > u_coins) + 1
 
-        # "top" rank based on wins/coins order among all players
         if self.use_mongo and self.users_col is not None:
             try:
                 all_sorted = list(self.users_col.find({}, {"user_id": 1, "coins": 1, "games_won": 1}))
@@ -788,10 +789,6 @@ def mention_user(user_id: int, name: str, username: Optional[str] = None) -> str
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
-    if username:
-        clean_u = username.strip().lstrip("@")
-        if clean_u:
-            return f"@{clean_u}"
     return f'<a href="tg://user?id={user_id}">{clean_name}</a>'
 
 
@@ -964,12 +961,11 @@ def format_profile_card(
     streak = int(u.get("streak", 0))
     best_streak = int(u.get("best_streak", 0))
     big_win = int(u.get("biggest_win", 0))
-    handle = f"@{u['username']}" if u.get("username") else "—"
     g_rank, top_rank, grp_rank, total_users = db.get_user_ranks(user_id, chat_id=chat_id)
     grp_line = f"• <b>Group Rank:</b> <code>#{grp_rank}</code>\n" if grp_rank is not None else ""
     return (
         f"🪪 <b>Player Profile</b>\n"
-        f"• <b>Name:</b> {u.get('first_name', name)} ({handle})\n"
+        f"• <b>Name:</b> <b>{u.get('first_name', name)}</b>\n"
         f"• <b>ID:</b> <code>{user_id}</code>\n"
         f"• <b>Balance:</b> <code>{coins}</code> coins\n"
         f"• <b>Global Rank (gtop):</b> <code>#{g_rank}</code> / <code>{total_users}</code>\n"
@@ -1324,6 +1320,19 @@ async def ttt_join_countdown(app: Application, chat_id: int, message_id: int) ->
 # ==============================================================================
 # SOLO GAMES ENGINE
 # ==============================================================================
+def eval_guess_payout(choice: str, target_num: int, bet: int) -> Tuple[float, int, str]:
+    try:
+        picked_num = int(choice)
+    except (ValueError, TypeError):
+        return 0.0, 0, "miss"
+    diff = abs(picked_num - target_num)
+    if diff == 0:
+        return GUESS_EXACT_MULT, int(round(bet * GUESS_EXACT_MULT)), "exact"
+    if diff == 1:
+        return GUESS_NEAR_MULT, int(round(bet * GUESS_NEAR_MULT)), "near"
+    return 0.0, 0, "miss"
+
+
 async def resolve_solo_game(
     chat_id: int,
     user_id: int,
@@ -1346,6 +1355,7 @@ async def resolve_solo_game(
 
     won = False
     mult = 0.0
+    payout = 0
     outcome_text = ""
 
     if game_key == "rps":
@@ -1384,9 +1394,15 @@ async def resolve_solo_game(
         outcome_text = f"{'🎉' if won else '💥'} {format_slot_spin_anim(sym, t_key, won=won, picked=choice)}"
     elif game_key == "guess":
         num = random.randint(1, 10)
-        won = str(num) == choice
-        mult = 8.5 if won else 0.0
-        outcome_text = f"{'🎉' if won else '💥'} Number: <b>{num}</b> (Picked <b>{choice}</b>)"
+        mult, payout, g_mode = eval_guess_payout(choice, num, bet)
+        if g_mode == "exact":
+            won = True
+            outcome_text = f"🎉 Exact Guess! Number: <b>{num}</b> (Picked <b>{choice}</b> · {GUESS_EXACT_MULT}x)"
+        elif g_mode == "near":
+            won = True
+            outcome_text = f"✨ Paas Ka Guess (±1)! Number: <b>{num}</b> (Picked <b>{choice}</b> · {GUESS_NEAR_MULT}x)"
+        else:
+            outcome_text = f"💥 Number: <b>{num}</b> (Picked <b>{choice}</b>)"
     elif game_key == "wheel":
         pocket = random.choice(["2x", "2x", "3x", "5x", "bust"])
         won = choice == pocket
@@ -1405,7 +1421,9 @@ async def resolve_solo_game(
         mult = 3.5 if won else 0.0
         outcome_text = f"{'🎉' if won else '💥'} {format_sports_anim(sport_pick, choice)}"
 
-    payout = int(round(bet * mult))
+    if game_key != "guess":
+        payout = int(round(bet * mult))
+
     if payout > 0:
         final_bal = db.adjust_coins(
             user_id,
@@ -1486,7 +1504,7 @@ async def resolve_solo_aviator(
     db.record_last_bet(user_id, bet)
 
     steps_total = int(round((AVIATOR_MAX_MULTIPLIER - AVIATOR_MIN_MULTIPLIER) / AVIATOR_STEP_INC))
-    crash_step = random.randint(1, steps_total)
+    crash_step = random.randint(2, max(2, steps_total))
     crash_m = round(AVIATOR_MIN_MULTIPLIER + crash_step * AVIATOR_STEP_INC, 1)
     solo_id = f"solo_av_{user_id}_{int(time.time() * 1000)}"
     flight_state = {
@@ -1527,7 +1545,10 @@ async def resolve_solo_aviator(
                         [[stylish_btn(f"💸 Cash Out ({cur_m:.1f}x)", f"av_cash:{solo_id}", "success")]]
                     ),
                 )
-            except (BadRequest, TelegramError):
+            except BadRequest as exc:
+                if "message is not modified" not in str(exc).lower():
+                    pass
+            except TelegramError:
                 pass
         if flight_state.get("cashed_out"):
             break
@@ -1739,6 +1760,7 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
     outcome_label = ""
     winning_choices: set = set()
     mult_map: Dict[str, float] = {}
+    guess_target: Optional[int] = None
 
     if game_key == "rps":
         bot_pick = random.choice(["rock", "paper", "scissor"])
@@ -1777,9 +1799,10 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
         mult_map = {"cherry": 2.5, "gem": 4.0, "seven": 7.0}
     elif game_key == "guess":
         num = random.randint(1, 10)
+        guess_target = num
         outcome_label = f"🔢 Number: <b>{num}</b>"
         winning_choices = {str(num)}
-        mult_map = {str(num): 8.5}
+        mult_map = {str(num): GUESS_EXACT_MULT}
     elif game_key == "wheel":
         pocket = random.choice(["2x", "2x", "3x", "5x", "bust"])
         outcome_label = f"🎡 Wheel: <b>{pocket}</b>"
@@ -1802,9 +1825,13 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
     for uid, bdata in bets.items():
         ch = bdata["choice"]
         bet_amt = int(bdata["bet"])
-        m = mult_map.get(ch, 0.0)
-        payout = int(round(bet_amt * m))
-        won = ch in winning_choices and m > 1.0
+        if game_key == "guess" and guess_target is not None:
+            m, payout, g_mode = eval_guess_payout(ch, guess_target, bet_amt)
+            won = g_mode in ("exact", "near")
+        else:
+            m = mult_map.get(ch, 0.0)
+            payout = int(round(bet_amt * m))
+            won = ch in winning_choices and m > 1.0
         if payout > 0:
             bal = db.adjust_coins(
                 uid,
