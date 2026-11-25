@@ -105,7 +105,7 @@ def run_health_server() -> None:
 def stylish_btn(
     text: str,
     callback_data: str,
-    tone: str = "primary",  # "primary" (blue) | "success" (green) | "danger" (red) | "muted" (none)
+    tone: str = "primary",  # "primary" (blue) | "success" (green) | "danger" (red) | "muted" (neutral)
 ) -> InlineKeyboardButton:
     style_map = {
         "primary": "primary",
@@ -722,17 +722,24 @@ db = Database(MONGO_URI)
 # ==============================================================================
 PENDING_SOLO_BET: Dict[Tuple[int, int], Dict[str, Any]] = {}
 ACTIVE_MINES: Dict[Tuple[int, int], Dict[str, Any]] = {}
-ACTIVE_ROUNDS: Dict[int, Dict[str, Any]] = {}
+ACTIVE_ROUNDS: Dict[str, Dict[str, Any]] = {}
 ROUNDS_BY_ID: Dict[str, Dict[str, Any]] = {}
+CHAT_ROUNDS: Dict[int, List[str]] = {}
+
+def unregister_round(chat_id: int, round_id: str) -> None:
+    ACTIVE_ROUNDS.pop(round_id, None)
+    ROUNDS_BY_ID.pop(round_id, None)
+    rlist = CHAT_ROUNDS.get(chat_id)
+    if rlist and round_id in rlist:
+        rlist.remove(round_id)
+        if not rlist:
+            CHAT_ROUNDS.pop(chat_id, None)
+
 ACTIVE_TTT5: Dict[int, Dict[str, Any]] = {}
 
 
 def mention_user(user_id: int, name: str, username: Optional[str] = None) -> str:
     clean_name = (name or "Player").strip()[:40].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    if username:
-        clean_u = username.strip().lstrip("@")
-        if clean_u:
-            return f"@{clean_u}"
     return f'<a href="tg://user?id={user_id}">{clean_name}</a>'
 
 
@@ -1389,7 +1396,7 @@ async def resolve_solo_game(
             d_sent = await send_fn(dice_emoji=d_emoji)
             if d_sent and getattr(d_sent, "message_id", None):
                 solo_mids.append(int(d_sent.message_id))
-        except TypeError:
+        except Exception:
             pass
     res_msg = await send_fn(
         f"{outcome_text}\n"
@@ -1560,8 +1567,7 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
     msg_id = round_obj["message_id"]
 
     if not bets:
-        ACTIVE_ROUNDS.pop(chat_id, None)
-        ROUNDS_BY_ID.pop(round_obj["id"], None)
+        unregister_round(chat_id, round_obj["id"])
         try:
             await app.bot.edit_message_text(
                 chat_id=chat_id,
@@ -1591,7 +1597,7 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
                 "mult": 0.0,
                 "payout": 0,
             }
-            for uid, info in bets.items()
+            for uid, info in round_obj.get("bets", {}).items()
         },
         "cashouts": [],
     }
@@ -1603,8 +1609,15 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
     cur_mult = AVIATOR_MIN_MULTIPLIER
     while cur_mult <= crash_mult + 1e-9:
         flight_state["mult"] = round(cur_mult, 1)
-        cashout_btn = InlineKeyboardMarkup(
-            [[stylish_btn(f"💸 Cash Out ({cur_mult:.1f}x)", f"av_cash:{round_obj['id']}", "success")]]
+        live_kb = InlineKeyboardMarkup(
+            [
+                [stylish_btn(f"💸 Cash Out ({cur_mult:.1f}x)", f"av_cash:{round_obj['id']}", "success")],
+                [
+                    stylish_btn("100", f"rbet:{round_obj['id']}:flight:100", "primary"),
+                    stylish_btn("250", f"rbet:{round_obj['id']}:flight:250", "primary"),
+                    stylish_btn("500", f"rbet:{round_obj['id']}:flight:500", "primary"),
+                ],
+            ]
         )
         try:
             await app.bot.edit_message_text(
@@ -1613,24 +1626,22 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
                 text=(
                     f"🚀 <b>Aviator Live:</b> <code>{cur_mult:.1f}x</code>\n"
                     f"<code>{build_flight_track(cur_mult, crashed=False)}</code>\n"
-                    f"⚡ Crash hone se pehle Cash Out dabao!\n\n"
+                    f"⚡ Crash se pehle Cash Out dabao — baaki log bhi bet laga sakte hain!\n\n"
                     f"{format_aviator_cashout_feed(flight_state)}"
                 ),
                 parse_mode=ParseMode.HTML,
-                reply_markup=cashout_btn,
+                reply_markup=live_kb,
             )
         except (BadRequest, TelegramError):
             pass
 
-        if all(p["cashed_out"] for p in flight_state["players"].values()):
-            break
+
 
         await asyncio.sleep(AVIATOR_STEP_SEC)
         cur_mult = round(cur_mult + AVIATOR_STEP_INC, 1)
 
     flight_state["active"] = False
-    ACTIVE_ROUNDS.pop(chat_id, None)
-    ROUNDS_BY_ID.pop(round_obj["id"], None)
+    unregister_round(chat_id, round_obj["id"])
 
     summary_lines = [
         f"💥 <b>Aviator Crashed at <code>{crash_mult:.1f}x</code>!</b>",
@@ -1664,7 +1675,7 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
 
 
 async def finalize_group_round(app: Application, chat_id: int, round_id: str) -> None:
-    round_obj = ACTIVE_ROUNDS.get(chat_id)
+    round_obj = ACTIVE_ROUNDS.get(round_id) or ROUNDS_BY_ID.get(round_id)
     if not round_obj or round_obj.get("id") != round_id or round_obj.get("phase") == "done":
         return
 
@@ -1674,25 +1685,17 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
         return
 
     round_obj["phase"] = "done"
-    ACTIVE_ROUNDS.pop(chat_id, None)
-    ROUNDS_BY_ID.pop(round_id, None)
+    unregister_round(chat_id, round_id)
 
     bets: Dict[int, Dict[str, Any]] = round_obj.get("bets", {})
     msg_id = round_obj["message_id"]
 
-    if len(bets) < 2:
-        for uid, bdata in bets.items():
-            db.adjust_coins(uid, int(bdata["bet"]), chat_id=chat_id, name=bdata["name"])
-        reason_txt = (
-            "kisi ne bet lock nahi ki."
-            if not bets
-            else "kam se kam <b>2 players</b> chahiye the — bet refund kar di gayi."
-        )
+    if not bets:
         try:
             await app.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=msg_id,
-                text=f"⏱️ <b>{game_key.upper()}</b> — {ROUND_SECONDS}s round khatam, {reason_txt}",
+                text=f"⏱️ <b>{game_key.upper()}</b> — {ROUND_SECONDS}s round khatam, kisi ne bet lock nahi ki.",
                 parse_mode=ParseMode.HTML,
                 reply_markup=post_game_keyboard(f"pick_game:{game_key}"),
             )
@@ -1817,35 +1820,60 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
 
 
 async def group_round_timer_task(app: Application, chat_id: int, round_id: str) -> None:
-    remaining = ROUND_SECONDS
+    deadline = time.monotonic() + ROUND_SECONDS
     step = 2
-    while remaining > 0:
-        await asyncio.sleep(min(step, remaining))
-        remaining = max(0, remaining - step)
-        round_obj = ACTIVE_ROUNDS.get(chat_id)
-        if not round_obj or round_obj.get("id") != round_id or round_obj.get("phase") == "done":
-            return
-        msg_id = round_obj.get("message_id")
-        if not msg_id:
-            continue
-        if round_obj["game"] == "aviator":
-            kb = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
-            header = f"🚀 <b>Aviator Group Round</b> (⏳ <code>{remaining}s</code> left)\nApni bet lock karo!"
-        else:
-            kb = game_choice_keyboard(round_obj["game"], round_id)
-            header = f"🎮 <b>{round_obj['game'].upper()} Round</b> (⏳ <code>{remaining}s</code> left)\nChoice aur bet lock karo:"
-        try:
-            await app.bot.edit_message_text(
-                chat_id=chat_id,
-                message_id=msg_id,
-                text=f"{header}\n\n{format_locked_bets_text(round_obj)}",
-                parse_mode=ParseMode.HTML,
-                reply_markup=kb,
-            )
-        except (BadRequest, TelegramError):
-            pass
-
-    await finalize_group_round(app, chat_id, round_id)
+    try:
+        while True:
+            now_m = time.monotonic()
+            remaining = int(round(deadline - now_m))
+            if remaining <= 0:
+                break
+            await asyncio.sleep(min(step, deadline - time.monotonic()))
+            round_obj = ACTIVE_ROUNDS.get(round_id) or ROUNDS_BY_ID.get(round_id)
+            if not round_obj or round_obj.get("id") != round_id or round_obj.get("phase") == "done":
+                return
+            rem_now = max(0, int(round(deadline - time.monotonic())))
+            msg_id = round_obj.get("message_id")
+            if not msg_id or rem_now <= 0:
+                continue
+            if round_obj["game"] == "aviator":
+                kb = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
+                header = f"🚀 <b>Aviator Group Round</b> (⏳ <code>{rem_now}s</code> left)\nApni bet lock karo!"
+            else:
+                kb = game_choice_keyboard(round_obj["game"], round_id)
+                header = f"🎮 <b>{round_obj['game'].upper()} Round</b> (⏳ <code>{rem_now}s</code> left)\nChoice aur bet lock karo:"
+            new_txt = f"{header}\n\n{format_locked_bets_text(round_obj)}"
+            if round_obj.get("last_text") != new_txt or round_obj.get("last_rem") != rem_now:
+                round_obj["last_text"] = new_txt
+                round_obj["last_rem"] = rem_now
+                try:
+                    await asyncio.wait_for(
+                        app.bot.edit_message_text(
+                            chat_id=chat_id,
+                            message_id=msg_id,
+                            text=new_txt,
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=kb,
+                        ),
+                        timeout=4.0,
+                    )
+                except asyncio.TimeoutError:
+                    logger.debug("Round %s timer edit timed out; continuing independently", round_id)
+                except BadRequest as exc:
+                    if "message is not modified" not in str(exc).lower():
+                        logger.debug("Round timer edit skipped: %s", exc)
+                except TelegramError as exc:
+                    logger.debug("Round timer telegram error: %s", exc)
+    finally:
+        r_check = ACTIVE_ROUNDS.get(round_id) or ROUNDS_BY_ID.get(round_id)
+        if r_check and r_check.get("phase") != "done":
+            try:
+                await asyncio.wait_for(finalize_group_round(app, chat_id, round_id), timeout=8.0)
+            except Exception as exc:
+                logger.warning("Force finalizing stuck round %s: %s", round_id, exc)
+                if r_check:
+                    r_check["phase"] = "done"
+                unregister_round(chat_id, round_id)
 
 
 async def start_group_round(
@@ -1856,13 +1884,20 @@ async def start_group_round(
     game_key: str,
     send_fn: Callable[..., Coroutine[Any, Any, Any]],
 ) -> None:
-    if chat_id in ACTIVE_ROUNDS:
-        cur = ACTIVE_ROUNDS[chat_id]
-        await send_fn(
-            f"⚠️ Is group mein abhi <b>{cur['game'].upper()}</b> ka round chal raha hai—pehle khatam hone do.",
-            parse_mode=ParseMode.HTML,
-        )
-        return
+    now_wall = time.time()
+    stale_ids = [
+        rid for rid in list(CHAT_ROUNDS.get(chat_id, []))
+        if not ROUNDS_BY_ID.get(rid)
+        or ROUNDS_BY_ID[rid].get("phase") == "done"
+        or (now_wall - float(ROUNDS_BY_ID[rid].get("created_at", now_wall))) > (ROUND_SECONDS + 25)
+    ]
+    for sid in stale_ids:
+        unregister_round(chat_id, sid)
+
+    existing_ids = CHAT_ROUNDS.get(chat_id, [])
+    if len(existing_ids) >= 6:
+        oldest_id = existing_ids[0]
+        unregister_round(chat_id, oldest_id)
 
     round_id = f"{abs(chat_id)}_{int(time.time() * 1000)}_{random.randint(10, 99)}"
     round_obj: Dict[str, Any] = {
@@ -1875,8 +1910,9 @@ async def start_group_round(
         "message_id": 0,
         "created_at": time.time(),
     }
-    ACTIVE_ROUNDS[chat_id] = round_obj
+    ACTIVE_ROUNDS[round_id] = round_obj
     ROUNDS_BY_ID[round_id] = round_obj
+    CHAT_ROUNDS.setdefault(chat_id, []).append(round_id)
 
     if game_key == "aviator":
         markup = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
@@ -2493,10 +2529,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await query.answer(f"Theme: {SLOT_THEMES[next_t][0]}")
             if query.message:
                 try:
-                    await query.message.edit_text(
+                    txt_st = (
                         f"🎮 <b>SLOTS Round</b> ({ROUND_SECONDS}s) · Theme: <b>{SLOT_THEMES[next_t][0]}</b>\n"
                         f"Choice aur bet lock karo:\n\n"
-                        f"{format_locked_bets_text(round_obj)}",
+                        f"{format_locked_bets_text(round_obj)}"
+                    )
+                    round_obj["last_text"] = txt_st
+                    await query.message.edit_text(
+                        txt_st,
                         parse_mode=ParseMode.HTML,
                         reply_markup=game_choice_keyboard("slots", round_id),
                     )
@@ -2530,7 +2570,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if data.startswith("rbet:"):
             _, round_id, choice, amt_str = data.split(":", 3)
             round_obj = ROUNDS_BY_ID.get(round_id)
-            if not round_obj or round_obj.get("phase") not in ("pick", "bet"):
+            is_mid_flight = (
+                round_obj.get("game") == "aviator"
+                and round_obj.get("phase") == "flight"
+                and bool((round_obj.get("flight") or {}).get("active"))
+            )
+            if not round_obj or (round_obj.get("phase") not in ("pick", "bet") and not is_mid_flight):
                 await query.answer("Round khatam ho chuka hai.", show_alert=True)
                 return
 
@@ -2550,6 +2595,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
             db.record_last_bet(u.id, bet_amt)
             round_obj["bets"][u.id] = {"user_id": u.id, "name": u.first_name, "username": u.username or "", "choice": choice, "bet": bet_amt}
+            flight_live = round_obj.get("flight")
+            if round_obj.get("game") == "aviator" and flight_live and flight_live.get("active"):
+                flight_live["players"][u.id] = {
+                    "user_id": u.id,
+                    "name": u.first_name,
+                    "username": u.username or "",
+                    "bet": bet_amt,
+                    "cashed_out": False,
+                    "mult": 0.0,
+                    "payout": 0,
+                }
             await query.answer(f"{bet_amt} coins lock!")
 
             if query.message:
@@ -2617,13 +2673,23 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     [[stylish_btn(f"💸 Cash Out ({mult:.1f}x)", f"av_cash:{round_id}", "success")]]
                 )
                 try:
+                    live_cash_kb = InlineKeyboardMarkup(
+                        [
+                            [stylish_btn(f"💸 Cash Out ({mult:.1f}x)", f"av_cash:{round_id}", "success")],
+                            [
+                                stylish_btn("100", f"rbet:{round_id}:flight:100", "primary"),
+                                stylish_btn("250", f"rbet:{round_id}:flight:250", "primary"),
+                                stylish_btn("500", f"rbet:{round_id}:flight:500", "primary"),
+                            ],
+                        ]
+                    )
                     await query.message.edit_text(
                         f"🚀 <b>Aviator Live:</b> <code>{mult:.1f}x</code>\n"
                         f"<code>{format_aviator_plane_bar(mult)}</code>\n"
-                        f"⚡ Crash hone se pehle Cash Out dabao!\n\n"
+                        f"⚡ Crash se pehle Cash Out dabao — baaki log bhi bet laga sakte hain!\n\n"
                         f"{format_aviator_cashout_feed(flight)}",
                         parse_mode=ParseMode.HTML,
-                        reply_markup=cashout_btn,
+                        reply_markup=live_cash_kb,
                     )
                 except (BadRequest, TelegramError):
                     pass
