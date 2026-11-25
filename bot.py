@@ -5,7 +5,6 @@ import random
 import threading
 import time
 from typing import Any, Callable, Coroutine, Dict, List, Optional, Tuple
-
 from flask import Flask
 from telegram import (
     BotCommand,
@@ -35,13 +34,11 @@ except ImportError:  # pragma: no cover
     DESCENDING = -1
     PyMongoError = Exception
 
-
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
-
 
 # ==============================================================================
 # CONFIGURATION & TIMERS (2x applied where agreed; Daily kept at 24h)
@@ -51,28 +48,22 @@ OWNER_ID = int(os.getenv("OWNER_ID", "0") or "0")
 MONGO_URI = os.getenv("MONGO_URI", "").strip()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
 PORT = int(os.getenv("PORT", "8080") or "8080")
-
 STARTING_COINS = 1000
 MIN_BET = 10
 MAX_BET = 50000
-
 DAILY_REWARD = 2000
 DAILY_COOLDOWN_SEC = 24 * 3600  # 24 hours (unchanged)
-
 REFILL_AMOUNT = 250
 REFILL_COOLDOWN_SEC = 30 * 60  # 30 minutes
-
 ROUND_SECONDS = 15  # updated from 20s to 15s
 TTT_JOIN_SECONDS = 12  # 2x from 6s
 TTT_TURN_SECONDS = 15  # updated from 20s to 15s
 AUTO_DELETE_RESULT_SEC = 10  # auto-delete finished match/result message quickly
 STALE_UI_DELETE_SEC = 20  # auto-delete idle info/bet/selection menus
-
 AVIATOR_STEP_SEC = 0.45
 AVIATOR_STEP_INC = 0.2
 AVIATOR_MIN_MULTIPLIER = 1.0
 AVIATOR_MAX_MULTIPLIER = 7.0
-
 MINES_BOMB_CHOICES = (2, 4, 5, 7, 9)
 SLOT_THEMES = {
     "classic": ("🍒 Classic", {"cherry": ("🍒", "2.5x"), "gem": ("💎", "4.0x"), "seven": ("7️⃣", "7.0x")}),
@@ -81,7 +72,6 @@ SLOT_THEMES = {
 }
 TTT_MARKS = ("❌", "⭕", "🔷", "🔶", "⭐", "🍀")
 TTT_MAX_PLAYERS = 6
-
 
 # ==============================================================================
 # FLASK HEALTH SERVER (Render / UptimeRobot friendly)
@@ -105,7 +95,7 @@ def run_health_server() -> None:
 def stylish_btn(
     text: str,
     callback_data: str,
-    tone: str = "primary",  # "primary" (blue) | "success" (green) | "danger" (red) | "muted" (neutral)
+    tone: str = "primary",  # "primary" (blue) | "success" (green) | "danger" (red) | "muted" (none)
 ) -> InlineKeyboardButton:
     style_map = {
         "primary": "primary",
@@ -304,71 +294,87 @@ def game_choice_keyboard(game_key: str, round_id: str) -> InlineKeyboardMarkup:
 
 def solo_choice_keyboard(game_key: str) -> InlineKeyboardMarkup:
     if game_key == "rps":
-        return InlineKeyboardMarkup([
+        return InlineKeyboardMarkup(
             [
-                stylish_btn("✊ Rock", "schoice:rps:rock", "primary"),
-                stylish_btn("✋ Paper", "schoice:rps:paper", "primary"),
-                stylish_btn("✌️ Scissor", "schoice:rps:scissor", "primary"),
-            ],
-            [stylish_btn("🏠 Menu", "back_menu", "muted")],
-        ])
+                [
+                    stylish_btn("✊ Rock", "schoice:rps:rock", "primary"),
+                    stylish_btn("✋ Paper", "schoice:rps:paper", "primary"),
+                    stylish_btn("✌️ Scissor", "schoice:rps:scissor", "primary"),
+                ],
+                [stylish_btn("🏠 Menu", "back_menu", "muted")],
+            ]
+        )
     if game_key == "hilo":
-        return InlineKeyboardMarkup([
+        return InlineKeyboardMarkup(
             [
-                stylish_btn("⬆️ High (4–6)", "schoice:hilo:high", "success"),
-                stylish_btn("⬇️ Low (1–3)", "schoice:hilo:low", "danger"),
-            ],
-            [stylish_btn("🏠 Menu", "back_menu", "muted")],
-        ])
+                [
+                    stylish_btn("⬆️ High (4–6)", "schoice:hilo:high", "success"),
+                    stylish_btn("⬇️ Low (1–3)", "schoice:hilo:low", "danger"),
+                ],
+                [stylish_btn("🏠 Menu", "back_menu", "muted")],
+            ]
+        )
     if game_key == "flip":
-        return InlineKeyboardMarkup([
+        return InlineKeyboardMarkup(
             [
-                stylish_btn("🟡 Heads", "schoice:flip:heads", "primary"),
-                stylish_btn("⚪ Tails", "schoice:flip:tails", "primary"),
-            ],
-            [stylish_btn("🏠 Menu", "back_menu", "muted")],
-        ])
+                [
+                    stylish_btn("🟡 Heads", "schoice:flip:heads", "primary"),
+                    stylish_btn("⚪ Tails", "schoice:flip:tails", "primary"),
+                ],
+                [stylish_btn("🏠 Menu", "back_menu", "muted")],
+            ]
+        )
     if game_key == "dice":
-        return InlineKeyboardMarkup([
-            [stylish_btn(f"🎲 {n}", f"schoice:dice:{n}", "primary") for n in (1, 2, 3)],
-            [stylish_btn(f"🎲 {n}", f"schoice:dice:{n}", "primary") for n in (4, 5, 6)],
-            [stylish_btn("🏠 Menu", "back_menu", "muted")],
-        ])
+        return InlineKeyboardMarkup(
+            [
+                [stylish_btn(f"🎲 {n}", f"schoice:dice:{n}", "primary") for n in (1, 2, 3)],
+                [stylish_btn(f"🎲 {n}", f"schoice:dice:{n}", "primary") for n in (4, 5, 6)],
+                [stylish_btn("🏠 Menu", "back_menu", "muted")],
+            ]
+        )
     if game_key == "slots":
-        return InlineKeyboardMarkup([
+        return InlineKeyboardMarkup(
             [
-                stylish_btn("🍒 Cherry (2.5x)", "schoice:slots:cherry", "primary"),
-                stylish_btn("💎 Gem (4x)", "schoice:slots:gem", "success"),
-                stylish_btn("7️⃣ Jackpot (7x)", "schoice:slots:seven", "danger"),
-            ],
-            [stylish_btn("🏠 Menu", "back_menu", "muted")],
-        ])
+                [
+                    stylish_btn("🍒 Cherry (2.5x)", "schoice:slots:cherry", "primary"),
+                    stylish_btn("💎 Gem (4x)", "schoice:slots:gem", "success"),
+                    stylish_btn("7️⃣ Jackpot (7x)", "schoice:slots:seven", "danger"),
+                ],
+                [stylish_btn("🏠 Menu", "back_menu", "muted")],
+            ]
+        )
     if game_key == "guess":
-        return InlineKeyboardMarkup([
-            [stylish_btn(f"{n}", f"schoice:guess:{n}", "primary") for n in (1, 2, 3, 4, 5)],
-            [stylish_btn(f"{n}", f"schoice:guess:{n}", "primary") for n in (6, 7, 8, 9, 10)],
-            [stylish_btn("🏠 Menu", "back_menu", "muted")],
-        ])
-    if game_key == "wheel":
-        return InlineKeyboardMarkup([
+        return InlineKeyboardMarkup(
             [
-                stylish_btn("🟢 2x", "schoice:wheel:2x", "success"),
-                stylish_btn("🔵 3x", "schoice:wheel:3x", "primary"),
-                stylish_btn("🔴 5x", "schoice:wheel:5x", "danger"),
+                [stylish_btn(f"{n}", f"schoice:guess:{n}", "primary") for n in (1, 2, 3, 4, 5)],
+                [stylish_btn(f"{n}", f"schoice:guess:{n}", "primary") for n in (6, 7, 8, 9, 10)],
+                [stylish_btn("🏠 Menu", "back_menu", "muted")],
+            ]
+        )
+    if game_key == "wheel":
+        return InlineKeyboardMarkup(
+            [
+                [
+                    stylish_btn("🟢 2x", "schoice:wheel:2x", "success"),
+                    stylish_btn("🔵 3x", "schoice:wheel:3x", "primary"),
+                    stylish_btn("🔴 5x", "schoice:wheel:5x", "danger"),
+                ],
+                [stylish_btn("🏠 Menu", "back_menu", "muted")],
+            ]
+        )
+    return InlineKeyboardMarkup(
+        [
+            [
+                stylish_btn("🏀 Hoops", "schoice:sports:hoops", "primary"),
+                stylish_btn("⚽ Goal", "schoice:sports:goal", "success"),
+            ],
+            [
+                stylish_btn("🎯 Bullseye", "schoice:sports:target", "danger"),
+                stylish_btn("🎳 Strike", "schoice:sports:strike", "primary"),
             ],
             [stylish_btn("🏠 Menu", "back_menu", "muted")],
-        ])
-    return InlineKeyboardMarkup([
-        [
-            stylish_btn("🏀 Hoops", "schoice:sports:hoops", "primary"),
-            stylish_btn("⚽ Goal", "schoice:sports:goal", "success"),
-        ],
-        [
-            stylish_btn("🎯 Bullseye", "schoice:sports:target", "danger"),
-            stylish_btn("🎳 Strike", "schoice:sports:strike", "primary"),
-        ],
-        [stylish_btn("🏠 Menu", "back_menu", "muted")],
-    ])
+        ]
+    )
 
 
 # ==============================================================================
@@ -381,11 +387,9 @@ class Database:
         self.users_col = None
         self.gstats_col = None
         self.chats_col = None
-
         self.mem_users: Dict[int, Dict[str, Any]] = {}
         self.mem_gstats: Dict[Tuple[int, int], Dict[str, Any]] = {}
         self.mem_chats: Dict[int, Dict[str, Any]] = {}
-
         if uri and MongoClient is not None:
             try:
                 self.client = MongoClient(uri, serverSelectionTimeoutMS=5000)
@@ -433,12 +437,11 @@ class Database:
                         {"user_id": user_id},
                         {"$set": {"first_name": safe_name, "username": username or ""}},
                     )
-                    doc["first_name"] = safe_name
-                    doc["username"] = username or ""
+                doc["first_name"] = safe_name
+                doc["username"] = username or ""
                 return doc
             except PyMongoError as exc:
                 logger.error("Mongo ensure_user error: %s", exc)
-
         if user_id not in self.mem_users:
             self.mem_users[user_id] = {
                 "user_id": user_id,
@@ -509,22 +512,18 @@ class Database:
         current_coins = int(user.get("coins", 0))
         if delta < 0 and current_coins + delta < 0:
             return None
-
         new_coins = max(0, current_coins + delta)
         prev_streak = int(user.get("streak", 0))
         prev_best = int(user.get("best_streak", 0))
         prev_big = int(user.get("biggest_win", 0))
-
         if won_delta > 0:
             new_streak = prev_streak + 1
         elif played_delta > 0 and delta <= 0 and payout_amount <= 0:
             new_streak = 0
         else:
             new_streak = prev_streak
-
         new_best = max(prev_best, new_streak)
         new_big = max(prev_big, payout_amount)
-
         if self.use_mongo:
             try:
                 res = self.users_col.find_one_and_update(
@@ -557,7 +556,6 @@ class Database:
             user["best_streak"] = new_best
             user["biggest_win"] = new_big
             final_coins = new_coins
-
         if chat_id is not None and chat_id < 0:
             self._update_group_stats(
                 chat_id=chat_id,
@@ -603,8 +601,7 @@ class Database:
                 doc["streak"] = max(int(doc.get("streak", 0)), fake_streak)
                 doc["best_streak"] = max(int(doc.get("best_streak", 0)), fake_streak)
                 doc["biggest_win"] = max(int(doc.get("biggest_win", 0)), fake_big)
-                return safe_amt
-
+            return safe_amt
         if self.use_mongo:
             try:
                 self.users_col.update_one({"user_id": user_id}, {"$set": extra_set})
@@ -681,6 +678,50 @@ class Database:
         items = [v for (cid, _), v in self.mem_gstats.items() if cid == chat_id]
         return sorted(items, key=lambda x: int(x.get("net_coins", 0)), reverse=True)[:limit]
 
+    def get_user_ranks(self, user_id: int, chat_id: Optional[int] = None) -> Tuple[int, int, Optional[int], int]:
+        u = self.get_user(user_id) or {}
+        u_coins = int(u.get("coins", 0))
+        if self.use_mongo and self.users_col is not None:
+            try:
+                total_users = int(self.users_col.count_documents({}))
+                g_rank = int(self.users_col.count_documents({"coins": {"$gt": u_coins}})) + 1
+            except PyMongoError:
+                all_u = list(self.mem_users.values())
+                total_users = len(all_u)
+                g_rank = sum(1 for item in all_u if int(item.get("coins", 0)) > u_coins) + 1
+        else:
+            all_u = list(self.mem_users.values())
+            total_users = len(all_u)
+            g_rank = sum(1 for item in all_u if int(item.get("coins", 0)) > u_coins) + 1
+
+        # "top" rank based on wins/coins order among all players
+        if self.use_mongo and self.users_col is not None:
+            try:
+                all_sorted = list(self.users_col.find({}, {"user_id": 1, "coins": 1, "games_won": 1}))
+            except PyMongoError:
+                all_sorted = list(self.mem_users.values())
+        else:
+            all_sorted = list(self.mem_users.values())
+        all_sorted.sort(
+            key=lambda x: (int(x.get("games_won", 0)), int(x.get("coins", 0))),
+            reverse=True,
+        )
+        top_rank = 1
+        for idx, item in enumerate(all_sorted, start=1):
+            if int(item.get("user_id", 0)) == user_id:
+                top_rank = idx
+                break
+
+        grp_rank: Optional[int] = None
+        if chat_id is not None and chat_id < 0:
+            g_items = self.group_top(chat_id, limit=1000)
+            for idx, item in enumerate(g_items, start=1):
+                if int(item.get("user_id", 0)) == user_id:
+                    grp_rank = idx
+                    break
+
+        return g_rank, top_rank, grp_rank, max(1, total_users)
+
     def stats_summary(self) -> Dict[str, int]:
         if self.use_mongo:
             try:
@@ -716,7 +757,6 @@ class Database:
 
 db = Database(MONGO_URI)
 
-
 # ==============================================================================
 # ACTIVE GAME STATES
 # ==============================================================================
@@ -726,20 +766,32 @@ ACTIVE_ROUNDS: Dict[str, Dict[str, Any]] = {}
 ROUNDS_BY_ID: Dict[str, Dict[str, Any]] = {}
 CHAT_ROUNDS: Dict[int, List[str]] = {}
 
+
 def unregister_round(chat_id: int, round_id: str) -> None:
     ACTIVE_ROUNDS.pop(round_id, None)
     ROUNDS_BY_ID.pop(round_id, None)
     rlist = CHAT_ROUNDS.get(chat_id)
     if rlist and round_id in rlist:
         rlist.remove(round_id)
-        if not rlist:
-            CHAT_ROUNDS.pop(chat_id, None)
+    if not rlist:
+        CHAT_ROUNDS.pop(chat_id, None)
+
 
 ACTIVE_TTT5: Dict[int, Dict[str, Any]] = {}
 
 
 def mention_user(user_id: int, name: str, username: Optional[str] = None) -> str:
-    clean_name = (name or "Player").strip()[:40].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    clean_name = (
+        (name or "Player")
+        .strip()[:40]
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+    if username:
+        clean_u = username.strip().lstrip("@")
+        if clean_u:
+            return f"@{clean_u}"
     return f'<a href="tg://user?id={user_id}">{clean_name}</a>'
 
 
@@ -808,7 +860,6 @@ def format_slot_spin_anim(
     t_name, t_icons = SLOT_THEMES.get(theme_key, SLOT_THEMES["classic"])
     order = ["cherry", "gem", "seven"]
     win_ico, win_mult = t_icons.get(sym, ("🍒", "2.5x"))
-
     if won is True:
         reels = f"[ {win_ico} | {win_ico} | {win_ico} ]"
         status = f"WIN ({win_mult})"
@@ -821,7 +872,6 @@ def format_slot_spin_anim(
     else:
         reels = f"[ {win_ico} | {win_ico} | {win_ico} ]"
         status = f"SPIN ({win_mult})"
-
     pick_part = f" · Pick: <b>{picked.upper()}</b>" if picked else ""
     return f"🎰 <b>Slots ({t_name}):</b> <code>{reels}</code> → <b>{sym.upper()}</b> [{status}]{pick_part}"
 
@@ -872,7 +922,6 @@ async def claim_daily_logic(user_id: int, first_name: str, username: Optional[st
     if elapsed < DAILY_COOLDOWN_SEC:
         rem = int(DAILY_COOLDOWN_SEC - elapsed)
         return False, f"⏳ Daily reward <b>{fmt_duration(rem)}</b> baad milega."
-
     db.set_cooldown_timestamp(user_id, "last_daily", now)
     new_bal = db.adjust_coins(user_id, DAILY_REWARD)
     bal_val = new_bal if new_bal is not None else int(user.get("coins", 0)) + DAILY_REWARD
@@ -890,7 +939,6 @@ async def claim_refill_logic(user_id: int, first_name: str, username: Optional[s
     if elapsed < REFILL_COOLDOWN_SEC:
         rem = int(REFILL_COOLDOWN_SEC - elapsed)
         return False, f"⏳ Refill har <b>30m</b> mein hota hai. Agla refill <b>{fmt_duration(rem)}</b> baad."
-
     db.set_cooldown_timestamp(user_id, "last_refill", now)
     new_bal = db.adjust_coins(user_id, REFILL_AMOUNT)
     bal_val = new_bal if new_bal is not None else int(user.get("coins", 0)) + REFILL_AMOUNT
@@ -900,7 +948,12 @@ async def claim_refill_logic(user_id: int, first_name: str, username: Optional[s
     )
 
 
-def format_profile_card(user_id: int, name: str, username: Optional[str]) -> str:
+def format_profile_card(
+    user_id: int,
+    name: str,
+    username: Optional[str],
+    chat_id: Optional[int] = None,
+) -> str:
     u = db.ensure_user(user_id, name, username)
     coins = int(u.get("coins", 0))
     played = int(u.get("games_played", 0))
@@ -912,11 +965,16 @@ def format_profile_card(user_id: int, name: str, username: Optional[str]) -> str
     best_streak = int(u.get("best_streak", 0))
     big_win = int(u.get("biggest_win", 0))
     handle = f"@{u['username']}" if u.get("username") else "—"
+    g_rank, top_rank, grp_rank, total_users = db.get_user_ranks(user_id, chat_id=chat_id)
+    grp_line = f"• <b>Group Rank:</b> <code>#{grp_rank}</code>\n" if grp_rank is not None else ""
     return (
         f"🪪 <b>Player Profile</b>\n"
         f"• <b>Name:</b> {u.get('first_name', name)} ({handle})\n"
         f"• <b>ID:</b> <code>{user_id}</code>\n"
         f"• <b>Balance:</b> <code>{coins}</code> coins\n"
+        f"• <b>Global Rank (gtop):</b> <code>#{g_rank}</code> / <code>{total_users}</code>\n"
+        f"• <b>Top Rank (top):</b> <code>#{top_rank}</code> / <code>{total_users}</code>\n"
+        f"{grp_line}"
         f"• <b>Record:</b> <code>{won}W</code> / <code>{loss}L</code> (<code>{win_rate}%</code>)\n"
         f"• <b>Streak (Best):</b> <code>{streak}</code> (<code>{best_streak}</code>)\n"
         f"• <b>Biggest Win:</b> <code>{big_win}</code>"
@@ -959,7 +1017,6 @@ def build_mines_keyboard(game: Dict[str, Any], reveal_all: bool = False, finishe
     mines_set = set(game["mines"])
     rev_set = set(game["revealed"])
     rows: List[List[InlineKeyboardButton]] = []
-
     for r in range(5):
         row_btns: List[InlineKeyboardButton] = []
         for c in range(5):
@@ -974,7 +1031,6 @@ def build_mines_keyboard(game: Dict[str, Any], reveal_all: bool = False, finishe
                 label, tone = "⬜", "muted"
             row_btns.append(stylish_btn(label, f"mclick:{idx}", tone))
         rows.append(row_btns)
-
     if not finished:
         mult = mines_multiplier(len(rev_set), game["mines_count"])
         payout = int(game["bet"] * mult)
@@ -983,7 +1039,6 @@ def build_mines_keyboard(game: Dict[str, Any], reveal_all: bool = False, finishe
         else:
             rows.append([stylish_btn("💎 Safe Tile Chuno", "mnop", "muted")])
         rows.append([stylish_btn("🚪 Bahar Jaao (Exit)", "mexit", "danger")])
-
     return InlineKeyboardMarkup(rows)
 
 
@@ -1001,13 +1056,10 @@ async def start_mines_game(
     if bet < MIN_BET or bet > MAX_BET:
         await send_fn(f"⚠️ Bet <b>{MIN_BET}</b> se <b>{MAX_BET}</b> ke beech rakho.", parse_mode=ParseMode.HTML)
         return
-
     db.ensure_user(user_id, name, username)
     game_key = (chat_id, user_id)
-
     ACTIVE_MINES.pop(game_key, None)
     PENDING_SOLO_BET.pop(game_key, None)
-
     new_bal = db.adjust_coins(user_id, -bet, chat_id=chat_id, name=name, played_delta=1)
     if new_bal is None:
         await send_fn(
@@ -1015,7 +1067,6 @@ async def start_mines_game(
             parse_mode=ParseMode.HTML,
         )
         return
-
     db.record_last_bet(user_id, bet)
     game = {
         "chat_id": chat_id,
@@ -1059,11 +1110,9 @@ def build_ttt_keyboard(game: Dict[str, Any], finished: bool = False) -> Optional
             tone = "muted" if cell is None else "primary"
             row_btns.append(stylish_btn(label, f"ttt_move:{idx}", tone))
         rows.append(row_btns)
-
     max_p = int(game.get("max_players", TTT_MAX_PLAYERS))
     if not finished and game["status"] == "joining" and len(game["players"]) < max_p:
         rows.append([stylish_btn(f"➕ Join ({len(game['players'])}/{max_p})", "ttt_join", "success")])
-
     return None if finished else InlineKeyboardMarkup(rows)
 
 
@@ -1108,19 +1157,16 @@ async def finish_ttt_game(app: Application, chat_id: int, reason: str = "Board F
     board: List[Optional[str]] = game["board"]
     entry_bet = int(game["bet"])
     total_pot = entry_bet * len(players)
-
     scores: List[Tuple[int, Dict[str, Any]]] = [
         (count_ttt_lines(board, p["mark"], size=size, line_len=line_len), p) for p in players
     ]
     max_pts = max((s[0] for s in scores), default=0)
     winners = [p for pts, p in scores if pts == max_pts and len(players) > 0]
-
     lines_out = [
         f"🏁 <b>{size}×{size} Tic Tac Toe Result</b> ({reason})",
         f"💰 <b>Pot:</b> <code>{total_pot}</code> coins",
         "",
     ]
-
     if winners:
         share = max(1, total_pot // len(winners))
         for p in winners:
@@ -1129,12 +1175,10 @@ async def finish_ttt_game(app: Application, chat_id: int, reason: str = "Board F
             lines_out.append(
                 f"🏆 {p['mark']} {mention_user(p['user_id'], p['name'], p.get('username'))} jeeta! +{share} coins (Bal: <code>{new_bal}</code>)"
             )
-
-    lines_out.append("")
+        lines_out.append("")
     lines_out.append("📊 <b>Lines Score:</b>")
     for pts, p in sorted(scores, key=lambda x: x[0], reverse=True):
         lines_out.append(f"• {p['mark']} {p['name']}: <code>{pts}</code> lines")
-
     old_mid = game.get("message_id")
     if isinstance(old_mid, int) and old_mid > 0:
         schedule_delete_messages(app.bot, chat_id, [old_mid], 2)
@@ -1176,7 +1220,6 @@ async def ttt_turn_watcher(app: Application, chat_id: int, expected_turn_num: in
     game = ACTIVE_TTT5.get(chat_id)
     if not game or game.get("status") != "active" or game.get("turn_num") != expected_turn_num:
         return
-
     players = game["players"]
     if not players:
         return
@@ -1185,16 +1228,13 @@ async def ttt_turn_watcher(app: Application, chat_id: int, expected_turn_num: in
     if not empty_indices:
         await finish_ttt_game(app, chat_id, "Board Full")
         return
-
     chosen_idx = random.choice(empty_indices)
     game["board"][chosen_idx] = cur_player["mark"]
     game["turn_idx"] = (game["turn_idx"] + 1) % len(players)
     game["turn_num"] = expected_turn_num + 1
-
     if all(x is not None for x in game["board"]):
         await finish_ttt_game(app, chat_id, "Board Full")
         return
-
     size = int(game.get("size", 5))
     next_p = players[game["turn_idx"] % len(players)]
     try:
@@ -1211,7 +1251,6 @@ async def ttt_turn_watcher(app: Application, chat_id: int, expected_turn_num: in
         )
     except (BadRequest, TelegramError):
         pass
-
     asyncio.create_task(ttt_turn_watcher(app, chat_id, game["turn_num"]))
 
 
@@ -1242,7 +1281,6 @@ async def ttt_join_countdown(app: Application, chat_id: int, message_id: int) ->
     game = ACTIVE_TTT5.get(chat_id)
     if not game or game.get("status") != "joining":
         return
-
     size = int(game.get("size", 5))
     players = game["players"]
     if len(players) < 2:
@@ -1262,7 +1300,6 @@ async def ttt_join_countdown(app: Application, chat_id: int, message_id: int) ->
             except (BadRequest, TelegramError):
                 pass
         return
-
     game["status"] = "active"
     game["turn_idx"] = 0
     game["turn_num"] = 1
@@ -1281,7 +1318,6 @@ async def ttt_join_countdown(app: Application, chat_id: int, message_id: int) ->
         )
     except (BadRequest, TelegramError):
         pass
-
     asyncio.create_task(ttt_turn_watcher(app, chat_id, 1))
 
 
@@ -1301,14 +1337,13 @@ async def resolve_solo_game(
     if bet < MIN_BET or bet > MAX_BET:
         await send_fn(f"⚠️ Bet <b>{MIN_BET}</b> se <b>{MAX_BET}</b> ke beech rakho.", parse_mode=ParseMode.HTML)
         return
-
     db.ensure_user(user_id, name, username)
     new_bal = db.adjust_coins(user_id, -bet, chat_id=chat_id, name=name, played_delta=1)
     if new_bal is None:
         await send_fn("❌ Balance kam hai! <code>/daily</code> ya <code>/refill</code> use karo.", parse_mode=ParseMode.HTML)
         return
-
     db.record_last_bet(user_id, bet)
+
     won = False
     mult = 0.0
     outcome_text = ""
@@ -1398,6 +1433,7 @@ async def resolve_solo_game(
                 solo_mids.append(int(d_sent.message_id))
         except Exception:
             pass
+
     res_msg = await send_fn(
         f"{outcome_text}\n"
         f"💰 <b>Bet:</b> <code>{bet}</code> · <b>Payout:</b> <code>{payout}</code>\n"
@@ -1407,6 +1443,7 @@ async def resolve_solo_game(
     )
     if res_msg and getattr(res_msg, "message_id", None):
         solo_mids.append(int(res_msg.message_id))
+
     if solo_mids:
         try:
             bot_ref = getattr(getattr(send_fn, "__closure__", [None])[0], "cell_contents", None)
@@ -1451,7 +1488,6 @@ async def resolve_solo_aviator(
     steps_total = int(round((AVIATOR_MAX_MULTIPLIER - AVIATOR_MIN_MULTIPLIER) / AVIATOR_STEP_INC))
     crash_step = random.randint(1, steps_total)
     crash_m = round(AVIATOR_MIN_MULTIPLIER + crash_step * AVIATOR_STEP_INC, 1)
-
     solo_id = f"solo_av_{user_id}_{int(time.time() * 1000)}"
     flight_state = {
         "solo": True,
@@ -1477,10 +1513,10 @@ async def resolve_solo_aviator(
 
     cur_m = AVIATOR_MIN_MULTIPLIER
     while cur_m <= crash_m + 1e-9:
-        flight_state["mult"] = round(cur_m, 1)
-        if flight_state["cashed_out"]:
+        if flight_state.get("cashed_out"):
             break
-        if av_msg and getattr(av_msg, "edit_text", None):
+        flight_state["mult"] = round(cur_m, 1)
+        if not flight_state.get("cashed_out") and av_msg and getattr(av_msg, "edit_text", None):
             try:
                 await av_msg.edit_text(
                     f"🚀 <b>Solo Aviator</b> · Bet: <code>{bet}</code>\n"
@@ -1493,6 +1529,8 @@ async def resolve_solo_aviator(
                 )
             except (BadRequest, TelegramError):
                 pass
+        if flight_state.get("cashed_out"):
+            break
         await asyncio.sleep(AVIATOR_STEP_SEC)
         cur_m = round(cur_m + AVIATOR_STEP_INC, 1)
 
@@ -1500,11 +1538,11 @@ async def resolve_solo_aviator(
     ROUNDS_BY_ID.pop(solo_id, None)
 
     if av_msg and getattr(av_msg, "edit_text", None):
-        if flight_state["cashed_out"]:
-            c_mult = flight_state["cash_mult"]
-            payout = flight_state["payout"]
-            cur_doc = db.get_user(user_id) or {}
-            final_b = int(cur_doc.get("coins", bal))
+        cur_doc = db.get_user(user_id) or {}
+        final_b = int(cur_doc.get("coins", bal))
+        if flight_state.get("cashed_out"):
+            c_mult = float(flight_state.get("cash_mult") or flight_state.get("mult") or AVIATOR_MIN_MULTIPLIER)
+            payout = int(flight_state.get("payout") or 0)
             try:
                 await av_msg.edit_text(
                     f"✅ <b>Cashed Out @ <code>{c_mult:.1f}x</code>!</b> (Crash: <code>{crash_m:.1f}x</code>)\n"
@@ -1516,8 +1554,6 @@ async def resolve_solo_aviator(
             except (BadRequest, TelegramError):
                 pass
         else:
-            cur_doc = db.get_user(user_id) or {}
-            final_b = int(cur_doc.get("coins", bal))
             try:
                 await av_msg.edit_text(
                     f"💥 <b>Crashed @ <code>{crash_m:.1f}x</code>!</b>\n"
@@ -1528,12 +1564,13 @@ async def resolve_solo_aviator(
                 )
             except (BadRequest, TelegramError):
                 pass
-        try:
-            bot_ref = getattr(getattr(send_fn, "__closure__", [None])[0], "cell_contents", None)
-            if hasattr(bot_ref, "message") and getattr(bot_ref.message, "get_bot", None):
-                schedule_delete_messages(bot_ref.message.get_bot(), chat_id, [int(av_msg.message_id)], AUTO_DELETE_RESULT_SEC)
-        except Exception:
-            pass
+
+    try:
+        bot_ref = getattr(getattr(send_fn, "__closure__", [None])[0], "cell_contents", None)
+        if hasattr(bot_ref, "message") and getattr(bot_ref.message, "get_bot", None):
+            schedule_delete_messages(bot_ref.message.get_bot(), chat_id, [int(av_msg.message_id)], AUTO_DELETE_RESULT_SEC)
+    except Exception:
+        pass
 
 
 # ==============================================================================
@@ -1545,7 +1582,9 @@ def format_locked_bets_text(round_obj: Dict[str, Any]) -> str:
         return "🔒 <i>Abhi kisi ne bet lock nahi ki hai.</i>"
     lines = ["🔒 <b>Locked Bets:</b>"]
     for item in bets.values():
-        lines.append(f"• ✅ {mention_user(item.get('user_id', 0), item['name'], item.get('username'))} ne <code>{item['bet']}</code> coins par lock kar diya ({item['choice']})")
+        lines.append(
+            f"• ✅ {mention_user(item.get('user_id', 0), item['name'], item.get('username'))} ne <code>{item['bet']}</code> coins par lock kar diya ({item['choice']})"
+        )
     return "\n".join(lines)
 
 
@@ -1565,14 +1604,13 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
     bets: Dict[int, Dict[str, Any]] = round_obj.get("bets", {})
     round_obj["phase"] = "flight"
     msg_id = round_obj["message_id"]
-
     if not bets:
         unregister_round(chat_id, round_obj["id"])
         try:
             await app.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=msg_id,
-                text="🚀 <b>Aviator</b> — 20s khatam, kisi player ne bet lock nahi ki.",
+                text="🚀 <b>Aviator</b> — Round khatam, kisi player ne bet lock nahi ki.",
                 parse_mode=ParseMode.HTML,
             )
             schedule_delete_messages(app.bot, chat_id, [msg_id], AUTO_DELETE_RESULT_SEC)
@@ -1583,7 +1621,6 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
     steps_total = int(round((AVIATOR_MAX_MULTIPLIER - AVIATOR_MIN_MULTIPLIER) / AVIATOR_STEP_INC))
     crash_step = random.randint(0, steps_total)
     crash_mult = round(AVIATOR_MIN_MULTIPLIER + crash_step * AVIATOR_STEP_INC, 1)
-
     flight_state = {
         "active": True,
         "mult": AVIATOR_MIN_MULTIPLIER,
@@ -1634,9 +1671,6 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
             )
         except (BadRequest, TelegramError):
             pass
-
-
-
         await asyncio.sleep(AVIATOR_STEP_SEC)
         cur_mult = round(cur_mult + AVIATOR_STEP_INC, 1)
 
@@ -1660,6 +1694,8 @@ async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Di
             summary_lines.append(
                 f"• 💥 {mention_user(uid, pdata['name'], pdata.get('username'))} — Bet <code>{pdata['bet']}</code> | Crash mein reh gaya → <b>-{pdata['bet']}</b> (Bal: <code>{b_val}</code>)"
             )
+    summary_lines.append("")
+    summary_lines.append(f"💥 <b>BLASTED AT <code>{crash_mult:.1f}x</code> — Game Khatam!</b>")
 
     try:
         await app.bot.edit_message_text(
@@ -1678,18 +1714,14 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
     round_obj = ACTIVE_ROUNDS.get(round_id) or ROUNDS_BY_ID.get(round_id)
     if not round_obj or round_obj.get("id") != round_id or round_obj.get("phase") == "done":
         return
-
     game_key = round_obj["game"]
     if game_key == "aviator":
         await run_aviator_group_flight(app, chat_id, round_obj)
         return
-
     round_obj["phase"] = "done"
     unregister_round(chat_id, round_id)
-
     bets: Dict[int, Dict[str, Any]] = round_obj.get("bets", {})
     msg_id = round_obj["message_id"]
-
     if not bets:
         try:
             await app.bot.edit_message_text(
@@ -1785,7 +1817,6 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
         else:
             u_doc = db.get_user(uid)
             bal = int(u_doc.get("coins", 0)) if u_doc else 0
-
         tag = "🎉" if won else ("🤝" if payout == bet_amt else "💥")
         result_lines.append(
             f"• {tag} {mention_user(uid, bdata['name'], bdata.get('username'))} ({ch}) — Bet <code>{bet_amt}</code> → Payout <code>{payout}</code> (Bal: <code>{bal}</code>)"
@@ -1820,60 +1851,41 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
 
 
 async def group_round_timer_task(app: Application, chat_id: int, round_id: str) -> None:
-    deadline = time.monotonic() + ROUND_SECONDS
+    remaining = ROUND_SECONDS
     step = 2
-    try:
-        while True:
-            now_m = time.monotonic()
-            remaining = int(round(deadline - now_m))
-            if remaining <= 0:
-                break
-            await asyncio.sleep(min(step, deadline - time.monotonic()))
-            round_obj = ACTIVE_ROUNDS.get(round_id) or ROUNDS_BY_ID.get(round_id)
-            if not round_obj or round_obj.get("id") != round_id or round_obj.get("phase") == "done":
-                return
-            rem_now = max(0, int(round(deadline - time.monotonic())))
-            msg_id = round_obj.get("message_id")
-            if not msg_id or rem_now <= 0:
-                continue
-            if round_obj["game"] == "aviator":
-                kb = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
-                header = f"🚀 <b>Aviator Group Round</b> (⏳ <code>{rem_now}s</code> left)\nApni bet lock karo!"
-            else:
-                kb = game_choice_keyboard(round_obj["game"], round_id)
-                header = f"🎮 <b>{round_obj['game'].upper()} Round</b> (⏳ <code>{rem_now}s</code> left)\nChoice aur bet lock karo:"
-            new_txt = f"{header}\n\n{format_locked_bets_text(round_obj)}"
-            if round_obj.get("last_text") != new_txt or round_obj.get("last_rem") != rem_now:
-                round_obj["last_text"] = new_txt
-                round_obj["last_rem"] = rem_now
-                try:
-                    await asyncio.wait_for(
-                        app.bot.edit_message_text(
-                            chat_id=chat_id,
-                            message_id=msg_id,
-                            text=new_txt,
-                            parse_mode=ParseMode.HTML,
-                            reply_markup=kb,
-                        ),
-                        timeout=4.0,
-                    )
-                except asyncio.TimeoutError:
-                    logger.debug("Round %s timer edit timed out; continuing independently", round_id)
-                except BadRequest as exc:
-                    if "message is not modified" not in str(exc).lower():
-                        logger.debug("Round timer edit skipped: %s", exc)
-                except TelegramError as exc:
-                    logger.debug("Round timer telegram error: %s", exc)
-    finally:
-        r_check = ACTIVE_ROUNDS.get(round_id) or ROUNDS_BY_ID.get(round_id)
-        if r_check and r_check.get("phase") != "done":
+    while remaining > 0:
+        await asyncio.sleep(min(step, remaining))
+        remaining = max(0, remaining - step)
+        round_obj = ACTIVE_ROUNDS.get(round_id) or ROUNDS_BY_ID.get(round_id)
+        if not round_obj or round_obj.get("id") != round_id or round_obj.get("phase") == "done":
+            return
+        msg_id = round_obj.get("message_id")
+        if not msg_id:
+            continue
+        if round_obj["game"] == "aviator":
+            kb = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
+            header = f"🚀 <b>Aviator Group Round</b> (⏳ <code>{remaining}s</code> left)\nApni bet lock karo!"
+        else:
+            kb = game_choice_keyboard(round_obj["game"], round_id)
+            header = f"🎮 <b>{round_obj['game'].upper()} Round</b> (⏳ <code>{remaining}s</code> left)\nChoice aur bet lock karo:"
+        new_txt = f"{header}\n\n{format_locked_bets_text(round_obj)}"
+        if round_obj.get("last_text") != new_txt or round_obj.get("last_rem") != remaining:
+            round_obj["last_text"] = new_txt
+            round_obj["last_rem"] = remaining
             try:
-                await asyncio.wait_for(finalize_group_round(app, chat_id, round_id), timeout=8.0)
-            except Exception as exc:
-                logger.warning("Force finalizing stuck round %s: %s", round_id, exc)
-                if r_check:
-                    r_check["phase"] = "done"
-                unregister_round(chat_id, round_id)
+                await app.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=msg_id,
+                    text=new_txt,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=kb,
+                )
+            except BadRequest as exc:
+                if "message is not modified" not in str(exc).lower():
+                    logger.debug("Round timer edit skipped: %s", exc)
+            except TelegramError as exc:
+                logger.debug("Round timer telegram error: %s", exc)
+    await finalize_group_round(app, chat_id, round_id)
 
 
 async def start_group_round(
@@ -1884,21 +1896,13 @@ async def start_group_round(
     game_key: str,
     send_fn: Callable[..., Coroutine[Any, Any, Any]],
 ) -> None:
-    now_wall = time.time()
-    stale_ids = [
-        rid for rid in list(CHAT_ROUNDS.get(chat_id, []))
-        if not ROUNDS_BY_ID.get(rid)
-        or ROUNDS_BY_ID[rid].get("phase") == "done"
-        or (now_wall - float(ROUNDS_BY_ID[rid].get("created_at", now_wall))) > (ROUND_SECONDS + 25)
-    ]
-    for sid in stale_ids:
-        unregister_round(chat_id, sid)
-
     existing_ids = CHAT_ROUNDS.get(chat_id, [])
     if len(existing_ids) >= 6:
-        oldest_id = existing_ids[0]
-        unregister_round(chat_id, oldest_id)
-
+        await send_fn(
+            "⚠️ Ek saath 6 rounds chal rahe hain—thoda ruk kar naya round start karo.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
     round_id = f"{abs(chat_id)}_{int(time.time() * 1000)}_{random.randint(10, 99)}"
     round_obj: Dict[str, Any] = {
         "id": round_id,
@@ -1933,10 +1937,8 @@ async def start_group_round(
             parse_mode=ParseMode.HTML,
             reply_markup=game_choice_keyboard(game_key, round_id),
         )
-
     if msg and getattr(msg, "message_id", None):
         round_obj["message_id"] = msg.message_id
-
     asyncio.create_task(group_round_timer_task(app, chat_id, round_id))
 
 
@@ -1951,7 +1953,6 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     db.ensure_user(u.id, u.first_name, u.username)
     if chat:
         db.record_chat(chat.id, chat.title or u.first_name, chat.type)
-
     await update.message.reply_text(
         f"👋 Namaste <b>{u.first_name}</b>! Game shuru karne ke liye neeche se mode chuno:",
         parse_mode=ParseMode.HTML,
@@ -1973,7 +1974,7 @@ async def cmd_profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     u = update.effective_user
     cid = update.effective_chat.id if update.effective_chat else update.message.chat_id
     m = await update.message.reply_text(
-        format_profile_card(u.id, u.first_name, u.username),
+        format_profile_card(u.id, u.first_name, u.username, chat_id=cid),
         parse_mode=ParseMode.HTML,
     )
     schedule_delete_messages(context.bot, cid, [m.message_id], STALE_UI_DELETE_SEC)
@@ -2028,9 +2029,11 @@ async def cmd_give(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     sender = update.effective_user
     db.ensure_user(sender.id, sender.first_name, sender.username)
-
     if not update.message.reply_to_message or not update.message.reply_to_message.from_user:
-        await update.message.reply_text("⚠️ Jis user ko coins dene hain uske message par reply karke <code>/give 100</code> likho.", parse_mode=ParseMode.HTML)
+        await update.message.reply_text(
+            "⚠️ Jis user ko coins dene hain uske message par reply karke <code>/give 100</code> likho.",
+            parse_mode=ParseMode.HTML,
+        )
         return
     target = update.message.reply_to_message.from_user
     if target.is_bot or target.id == sender.id:
@@ -2047,7 +2050,6 @@ async def cmd_give(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if amt <= 0:
         await update.message.reply_text("⚠️ Amount 0 se zyada hona chahiye.", parse_mode=ParseMode.HTML)
         return
-
     db.ensure_user(target.id, target.first_name, target.username)
     new_sender_bal = db.adjust_coins(sender.id, -amt)
     if new_sender_bal is None:
@@ -2170,7 +2172,6 @@ async def cmd_setmywins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     except ValueError:
         await update.message.reply_text("⚠️ Valid number daalo.", parse_mode=ParseMode.HTML)
         return
-
     doc = db.get_user(u.id) or {}
     cur_played = int(doc.get("games_played", 0))
     new_played = max(cur_played, wins_val)
@@ -2185,7 +2186,6 @@ async def cmd_setmywins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if u.id in db.mem_users:
         db.mem_users[u.id]["games_won"] = wins_val
         db.mem_users[u.id]["games_played"] = new_played
-
     await update.message.reply_text(
         f"👑 Owner Wins Set to <code>{wins_val}</code> (Played: <code>{new_played}</code>)",
         parse_mode=ParseMode.HTML,
@@ -2205,7 +2205,6 @@ async def cmd_setmyloss(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     except ValueError:
         await update.message.reply_text("⚠️ Valid number daalo.", parse_mode=ParseMode.HTML)
         return
-
     doc = db.get_user(u.id) or {}
     cur_wins = int(doc.get("games_won", 0))
     new_played = cur_wins + loss_val
@@ -2220,7 +2219,6 @@ async def cmd_setmyloss(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if u.id in db.mem_users:
         db.mem_users[u.id]["games_loss"] = loss_val
         db.mem_users[u.id]["games_played"] = new_played
-
     await update.message.reply_text(
         f"👑 Owner Loss Set to <code>{loss_val}</code> (Wins: <code>{cur_wins}</code> · Played: <code>{new_played}</code>)",
         parse_mode=ParseMode.HTML,
@@ -2283,9 +2281,11 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     reply = update.message.reply_to_message
     text_arg = " ".join(context.args).strip() if context.args else ""
     if not reply and not text_arg:
-        await update.message.reply_text("Use: kisi message par reply karke <code>/broadcast</code> ya <code>/broadcast &lt;text&gt;</code>", parse_mode=ParseMode.HTML)
+        await update.message.reply_text(
+            "Use: kisi message par reply karke <code>/broadcast</code> ya <code>/broadcast &lt;text&gt;</code>",
+            parse_mode=ParseMode.HTML,
+        )
         return
-
     chat_ids = db.all_chat_ids()
     sent = 0
     failed = 0
@@ -2299,7 +2299,6 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await asyncio.sleep(0.05)
         except (Forbidden, BadRequest, TelegramError):
             failed += 1
-
     await update.message.reply_text(f"📣 Broadcast done: ✅ <code>{sent}</code> | ❌ <code>{failed}</code>", parse_mode=ParseMode.HTML)
 
 
@@ -2315,7 +2314,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     chat_id = chat.id if chat else u.id
     is_private = chat.type == "private" if chat else True
     data = query.data or ""
-
     user_doc = db.ensure_user(u.id, u.first_name, u.username)
     if chat:
         db.record_chat(chat.id, chat.title or u.first_name, chat.type)
@@ -2378,7 +2376,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         if data == "menu_profile":
             await query.answer()
-            m_info = await reply_cb(format_profile_card(u.id, u.first_name, u.username))
+            m_info = await reply_cb(format_profile_card(u.id, u.first_name, u.username, chat_id=chat_id))
             if m_info and getattr(m_info, "message_id", None):
                 schedule_delete_messages(context.application.bot, chat_id, [m_info.message_id], STALE_UI_DELETE_SEC)
             return
@@ -2550,7 +2548,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if not round_obj or round_obj.get("phase") != "pick":
                 await query.answer("Round khatam ya bet stage mein hai.", show_alert=True)
                 return
-
             round_obj["choices"][u.id] = {"name": u.first_name, "choice": choice}
             await query.answer(f"Choice: {choice}")
             bet_kb = bet_amounts_keyboard(int(user_doc.get("coins", 0)), f"rbet:{round_id}:{choice}")
@@ -2571,30 +2568,33 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             _, round_id, choice, amt_str = data.split(":", 3)
             round_obj = ROUNDS_BY_ID.get(round_id)
             is_mid_flight = (
-                round_obj.get("game") == "aviator"
+                round_obj is not None
+                and round_obj.get("game") == "aviator"
                 and round_obj.get("phase") == "flight"
                 and bool((round_obj.get("flight") or {}).get("active"))
             )
             if not round_obj or (round_obj.get("phase") not in ("pick", "bet") and not is_mid_flight):
                 await query.answer("Round khatam ho chuka hai.", show_alert=True)
                 return
-
             if u.id in round_obj["bets"]:
                 await query.answer("Tumhari bet pehle se lock hai!", show_alert=True)
                 return
-
             bet_amt = int(amt_str)
             if bet_amt < MIN_BET or bet_amt > MAX_BET:
                 await query.answer(f"Bet {MIN_BET}-{MAX_BET} rakho.", show_alert=True)
                 return
-
             new_bal = db.adjust_coins(u.id, -bet_amt, chat_id=chat_id, name=u.first_name, played_delta=1)
             if new_bal is None:
                 await query.answer("Coins kam hain! /refill ya /daily chalao.", show_alert=True)
                 return
-
             db.record_last_bet(u.id, bet_amt)
-            round_obj["bets"][u.id] = {"user_id": u.id, "name": u.first_name, "username": u.username or "", "choice": choice, "bet": bet_amt}
+            round_obj["bets"][u.id] = {
+                "user_id": u.id,
+                "name": u.first_name,
+                "username": u.username or "",
+                "choice": choice,
+                "bet": bet_amt,
+            }
             flight_live = round_obj.get("flight")
             if round_obj.get("game") == "aviator" and flight_live and flight_live.get("active"):
                 flight_live["players"][u.id] = {
@@ -2607,7 +2607,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     "payout": 0,
                 }
             await query.answer(f"{bet_amt} coins lock!")
-
             if query.message:
                 if round_obj["game"] == "aviator":
                     kb = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
@@ -2615,7 +2614,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 else:
                     kb = game_choice_keyboard(round_obj["game"], round_id)
                     header = f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)\nBaaki members apni choice &amp; bet lock kar sakte hain:"
-
                 try:
                     await query.message.edit_text(
                         f"{header}\n\n{format_locked_bets_text(round_obj)}",
@@ -2641,13 +2639,29 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 if flight.get("cashed_out"):
                     await query.answer("Pehle hi Cash Out kar chuke ho!", show_alert=True)
                     return
-                mult = float(flight["mult"])
+                mult = float(flight.get("mult") or AVIATOR_MIN_MULTIPLIER)
                 payout = int(round(int(flight["bet"]) * mult))
                 flight["cashed_out"] = True
                 flight["cash_mult"] = mult
                 flight["payout"] = payout
                 db.adjust_coins(u.id, payout, chat_id=chat_id, name=u.first_name, won_delta=1, payout_amount=payout)
-                await query.answer(f"Cash Out @ {mult:.1f}x (+{payout})!")
+                try:
+                    await query.answer(f"Cash Out @ {mult:.1f}x (+{payout})!")
+                except BadRequest:
+                    pass
+                if query.message:
+                    cur_doc = db.get_user(u.id) or {}
+                    bal_now = int(cur_doc.get("coins", 0))
+                    try:
+                        await query.message.edit_text(
+                            f"✅ <b>Cashed Out @ <code>{mult:.1f}x</code>!</b>\n"
+                            f"<code>{format_aviator_plane_bar(mult, cashed_out=True)}</code>\n"
+                            f"💰 Payout: <b>+{payout}</b> · Bal: <code>{bal_now}</code>",
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=post_game_keyboard("menu_aviator"),
+                        )
+                    except (BadRequest, TelegramError):
+                        pass
                 return
 
             pdata = flight["players"].get(u.id)
@@ -2657,21 +2671,26 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if pdata["cashed_out"]:
                 await query.answer("Tum pehle hi Cash Out kar chuke ho!", show_alert=True)
                 return
-
             mult = float(flight["mult"])
             payout = int(round(pdata["bet"] * mult))
             pdata["cashed_out"] = True
             pdata["mult"] = mult
             pdata["payout"] = payout
-            flight["cashouts"].append({"user_id": u.id, "name": u.first_name, "username": u.username or "", "mult": mult, "payout": payout})
-
+            flight["cashouts"].append(
+                {
+                    "user_id": u.id,
+                    "name": u.first_name,
+                    "username": u.username or "",
+                    "mult": mult,
+                    "payout": payout,
+                }
+            )
             db.adjust_coins(u.id, payout, chat_id=chat_id, name=u.first_name, won_delta=1, payout_amount=payout)
-            await query.answer(f"Cash Out @ {mult:.1f}x (+{payout})!")
-
+            try:
+                await query.answer(f"Cash Out @ {mult:.1f}x (+{payout})!")
+            except BadRequest:
+                pass
             if query.message:
-                cashout_btn = InlineKeyboardMarkup(
-                    [[stylish_btn(f"💸 Cash Out ({mult:.1f}x)", f"av_cash:{round_id}", "success")]]
-                )
                 try:
                     live_cash_kb = InlineKeyboardMarkup(
                         [
@@ -2707,12 +2726,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if game["user_id"] != u.id:
                 await query.answer("Ye board sirf iske owner ka hai!", show_alert=True)
                 return
-
             idx = int(data.split(":", 1)[1])
             if idx in game["revealed"]:
                 await query.answer("Ye tile pehle hi khul chuka hai.")
                 return
-
             if idx in game["mines"]:
                 ACTIVE_MINES.pop((chat_id, u.id), None)
                 await query.answer("💥 Mine phat gaya!", show_alert=True)
@@ -2728,12 +2745,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     except (BadRequest, TelegramError):
                         pass
                 return
-
             game["revealed"].append(idx)
             mult = mines_multiplier(len(game["revealed"]), game["mines_count"])
             payout = int(game["bet"] * mult)
             await query.answer(f"💎 Safe! {mult}x")
-
             safe_total = 25 - game["mines_count"]
             if len(game["revealed"]) >= safe_total:
                 ACTIVE_MINES.pop((chat_id, u.id), None)
@@ -2750,7 +2765,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     except (BadRequest, TelegramError):
                         pass
                 return
-
             if query.message:
                 try:
                     await query.message.edit_text(
@@ -2826,7 +2840,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if chat_id in ACTIVE_TTT5:
                 await reply_cb("⚠️ Is group mein Tic Tac Toe pehle se chal raha hai.")
                 return
-
             size = int(data.split(":", 1)[1])
             cfg = TTT_CONFIG.get(size, TTT_CONFIG[5])
             max_p = int(cfg["max_players"])
@@ -2836,7 +2849,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if bal is None:
                 await reply_cb(f"❌ Tic Tac Toe start karne ke liye kam se kam <b>{entry_bet}</b> coins chahiye.")
                 return
-
             game = {
                 "chat_id": chat_id,
                 "size": size,
@@ -2859,7 +2871,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             )
             if msg and getattr(msg, "message_id", None):
                 game["message_id"] = msg.message_id
-                asyncio.create_task(ttt_join_countdown(context.application, chat_id, msg.message_id))
+            asyncio.create_task(ttt_join_countdown(context.application, chat_id, msg.message_id))
             return
 
         if data == "ttt_join":
@@ -2874,16 +2886,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if len(game["players"]) >= max_p:
                 await query.answer(f"Max players ({max_p}) full ho chuke hain.", show_alert=True)
                 return
-
             bal = db.adjust_coins(u.id, -int(game["bet"]), chat_id=chat_id, name=u.first_name, played_delta=1)
             if bal is None:
                 await query.answer("Coins kam hain!", show_alert=True)
                 return
-
             mark = TTT_MARKS[len(game["players"]) % len(TTT_MARKS)]
             game["players"].append({"user_id": u.id, "name": u.first_name, "username": u.username or "", "mark": mark})
             await query.answer(f"Joined as {mark}!")
-
             size = int(game.get("size", 5))
             if query.message:
                 try:
@@ -2908,21 +2917,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if cur_p["user_id"] != u.id:
                 await query.answer(f"Abhi {cur_p['name']} ({cur_p['mark']}) ki turn hai!", show_alert=True)
                 return
-
             idx = int(data.split(":", 1)[1])
             if game["board"][idx] is not None:
                 await query.answer("Ye box pehle se bhara hai!", show_alert=True)
                 return
-
             game["board"][idx] = cur_p["mark"]
             game["turn_idx"] = (game["turn_idx"] + 1) % len(players)
             game["turn_num"] = int(game.get("turn_num", 1)) + 1
             await query.answer("Move locked!")
-
             if all(x is not None for x in game["board"]):
                 await finish_ttt_game(context.application, chat_id, "Board Full")
                 return
-
             size = int(game.get("size", 5))
             next_p = players[game["turn_idx"] % len(players)]
             if query.message:
@@ -2936,7 +2941,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     )
                 except (BadRequest, TelegramError):
                     pass
-
             asyncio.create_task(ttt_turn_watcher(context.application, chat_id, game["turn_num"]))
             return
 
@@ -2958,7 +2962,6 @@ async def handle_plain_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     pending = PENDING_SOLO_BET.pop((chat_id, u.id), None)
     if not pending:
         return
-
     amt = int(txt)
     mode = pending.get("mode", "")
     if mode == "mines_bet":
@@ -3036,14 +3039,10 @@ async def post_init(app: Application) -> None:
 def main() -> None:
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN environment variable is required.")
-
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-
     threading.Thread(target=run_health_server, daemon=True).start()
-
     app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
-
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("bal", cmd_bal))
@@ -3055,7 +3054,6 @@ def main() -> None:
     app.add_handler(CommandHandler("top", cmd_top))
     app.add_handler(CommandHandler("gtop", cmd_gtop))
     app.add_handler(CommandHandler("mines", cmd_mines))
-
     app.add_handler(CommandHandler("mycoins", cmd_mycoins))
     app.add_handler(CommandHandler("setmycoins", cmd_setmycoins))
     app.add_handler(CommandHandler("setmywins", cmd_setmywins))
@@ -3064,11 +3062,9 @@ def main() -> None:
     app.add_handler(CommandHandler("setcoins", cmd_setcoins))
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("broadcast", cmd_broadcast))
-
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_plain_text))
     app.add_error_handler(error_handler)
-
     logger.info("Starting Telegram Game Bot polling...")
     app.run_polling(drop_pending_updates=True)
 
