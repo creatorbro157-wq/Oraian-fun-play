@@ -41,27 +41,34 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ==============================================================================
-# CONFIGURATION & TIMERS (2x applied where agreed; Daily kept at 24h)
+# CONFIGURATION & TIMERS
 # ==============================================================================
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 OWNER_ID = int(os.getenv("OWNER_ID", "0") or "0")
 MONGO_URI = os.getenv("MONGO_URI", "").strip()
 BOT_USERNAME = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
 PORT = int(os.getenv("PORT", "8080") or "8080")
+
 STARTING_COINS = 1000
 MIN_BET = 10
 MAX_BET = 50000
 DAILY_REWARD = 2000
-DAILY_COOLDOWN_SEC = 24 * 3600  # 24 hours (unchanged)
+DAILY_COOLDOWN_SEC = 24 * 3600  # 24 hours
 REFILL_AMOUNT = 250
 REFILL_COOLDOWN_SEC = 30 * 60  # 30 minutes
-ROUND_SECONDS = 15  # updated from 20s to 15s
-TTT_JOIN_SECONDS = 12  # 2x from 6s
-TTT_TURN_SECONDS = 15  # updated from 20s to 15s
-AUTO_DELETE_RESULT_SEC = 10  # auto-delete finished match/result message quickly
-STALE_UI_DELETE_SEC = 20  # auto-delete idle info/bet/selection menus
-TIMER_GAME_MAX_AGE_SEC = 35  # auto-delete stuck timer rounds past 35s
-TTT_MAX_AGE_SEC = 90  # auto-delete incomplete/lagged Tic Tac Toe past 1.5 min (90s)
+REFERRAL_BONUS_COINS = 500
+
+ROUND_SECONDS = 15  # 15s participate window
+BET_OPTION_SECONDS = 2.0  # 2s bet selection window per member after choice
+TTT_JOIN_SECONDS = 12
+TTT_TURN_SECONDS = 15
+AUTO_DELETE_RESULT_SEC = 10  # auto-delete finished match/result message after result
+STALE_UI_DELETE_SEC = 20  # auto-delete idle info/selection menus
+TIMER_GAME_MAX_AGE_SEC = 45  # auto-delete stuck timer rounds past 45s
+TTT_MAX_AGE_SEC = 300  # 5 minutes (300s) timeout for active/stuck Tic Tac Toe
+
+REDEEM_EXPIRY_SEC = 24 * 3600  # 24 hours validity
+
 AVIATOR_STEP_SEC = 0.75
 AVIATOR_STEP_INC = 0.2
 AVIATOR_MIN_MULTIPLIER = 1.0
@@ -117,41 +124,53 @@ def stylish_btn(
     return InlineKeyboardButton(text=text, callback_data=callback_data, **kwargs)
 
 
-def main_menu_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
+def add_bot_url_btn(bot_username: Optional[str] = None, label: str = "➕ Add Bot to Group") -> Optional[InlineKeyboardButton]:
+    uname = (bot_username or BOT_USERNAME or "").strip().lstrip("@")
+    if not uname:
+        return None
+    return InlineKeyboardButton(text=label, url=f"https://t.me/{uname}?startgroup=true")
+
+
+def main_menu_keyboard(bot_username: Optional[str] = None) -> InlineKeyboardMarkup:
+    add_btn = add_bot_url_btn(bot_username)
+    rows: List[List[InlineKeyboardButton]] = [
         [
-            [
-                stylish_btn("🚀 Aviator", "menu_aviator", "primary"),
-                stylish_btn("💣 Mines", "menu_mines", "danger"),
-                stylish_btn("❎ TicTacToe", "menu_ttt", "primary"),
-            ],
-            [
-                stylish_btn("✊ R-P-S", "pick_game:rps", "primary"),
-                stylish_btn("📈 Hi-Lo", "pick_game:hilo", "primary"),
-                stylish_btn("🪙 Flip", "pick_game:flip", "primary"),
-            ],
-            [
-                stylish_btn("🎲 Dice", "pick_game:dice", "primary"),
-                stylish_btn("🎰 Slots", "pick_game:slots", "primary"),
-                stylish_btn("🔢 Guess", "pick_game:guess", "primary"),
-            ],
-            [
-                stylish_btn("🎡 Wheel", "pick_game:wheel", "primary"),
-                stylish_btn("🏀 Sports", "pick_game:sports", "primary"),
-                stylish_btn("🪙 Refill", "do_refill", "success"),
-            ],
-            [
-                stylish_btn("🎁 Daily", "do_daily", "success"),
-                stylish_btn("💰 Balance", "menu_bal", "success"),
-                stylish_btn("👤 Profile", "menu_profile", "primary"),
-            ],
-            [
-                stylish_btn("🏆 Top", "menu_top", "primary"),
-                stylish_btn("👥 Group Top", "menu_gtop", "primary"),
-                stylish_btn("❓ Help", "menu_help", "muted"),
-            ],
-        ]
-    )
+            stylish_btn("🚀 Aviator", "menu_aviator", "primary"),
+            stylish_btn("💣 Mines", "menu_mines", "danger"),
+            stylish_btn("❎ TicTacToe", "menu_ttt", "primary"),
+        ],
+        [
+            stylish_btn("✊ R-P-S", "pick_game:rps", "primary"),
+            stylish_btn("📈 Hi-Lo", "pick_game:hilo", "primary"),
+            stylish_btn("🪙 Flip", "pick_game:flip", "primary"),
+        ],
+        [
+            stylish_btn("🎲 Dice", "pick_game:dice", "primary"),
+            stylish_btn("🎰 Slots", "pick_game:slots", "primary"),
+            stylish_btn("🔢 Guess", "pick_game:guess", "primary"),
+        ],
+        [
+            stylish_btn("🎡 Wheel", "pick_game:wheel", "primary"),
+            stylish_btn("🏀 Sports", "pick_game:sports", "primary"),
+            stylish_btn("🪙 Refill", "do_refill", "success"),
+        ],
+        [
+            stylish_btn("🎁 Daily", "do_daily", "success"),
+            stylish_btn("💰 Balance", "menu_bal", "success"),
+            stylish_btn("👤 Profile", "menu_profile", "primary"),
+        ],
+        [
+            stylish_btn("👥 Refer & Earn", "menu_refer", "success"),
+            stylish_btn("🏆 Top", "menu_top", "primary"),
+            stylish_btn("❓ Help", "menu_help", "muted"),
+        ],
+        [
+            stylish_btn("👥 Group Top", "menu_gtop", "primary"),
+        ],
+    ]
+    if add_btn:
+        rows[-1].append(add_btn)
+    return InlineKeyboardMarkup(rows)
 
 
 def aviator_guess_keyboard(bet: int) -> InlineKeyboardMarkup:
@@ -168,7 +187,7 @@ def aviator_guess_keyboard(bet: int) -> InlineKeyboardMarkup:
                 stylish_btn("7.0x", f"av_guess:{bet}:7.0", "danger"),
                 stylish_btn("10.0x", f"av_guess:{bet}:10.0", "danger"),
             ],
-            [stylish_btn("🏠 Menu", "back_menu", "muted")],
+            [stylish_btn("👥 Refer & Earn", "menu_refer", "success"), stylish_btn("🏠 Menu", "back_menu", "muted")],
         ]
     )
 
@@ -191,7 +210,12 @@ def post_game_keyboard(replay_cb: str, back_mode_cb: Optional[str] = None) -> In
     if back_mode_cb:
         row.append(stylish_btn("🔙 Modes", back_mode_cb, "primary"))
     row.append(stylish_btn("🏠 Menu", "back_menu", "muted"))
-    return InlineKeyboardMarkup([row])
+    return InlineKeyboardMarkup(
+        [
+            row,
+            [stylish_btn("👥 Refer & Earn", "menu_refer", "success")],
+        ]
+    )
 
 
 def mines_bombs_keyboard() -> InlineKeyboardMarkup:
@@ -204,7 +228,7 @@ def mines_bombs_keyboard() -> InlineKeyboardMarkup:
                 stylish_btn("7 💣", "mines_bombs:7", "danger"),
                 stylish_btn("9 💣", "mines_bombs:9", "danger"),
             ],
-            [stylish_btn("⬅️ Main Menu", "back_menu", "muted")],
+            [stylish_btn("👥 Refer & Earn", "menu_refer", "success"), stylish_btn("⬅️ Main Menu", "back_menu", "muted")],
         ]
     )
 
@@ -227,6 +251,8 @@ def bet_amounts_keyboard(
     ]
     if extra_rows:
         rows.extend(extra_rows)
+    # Referral button right below bet buttons in every game
+    rows.append([stylish_btn(f"🎁 Refer & Earn (+{REFERRAL_BONUS_COINS})", "menu_refer", "success")])
     return InlineKeyboardMarkup(rows)
 
 
@@ -404,7 +430,7 @@ def solo_choice_keyboard(game_key: str) -> InlineKeyboardMarkup:
 
 
 # ==============================================================================
-# STORAGE LAYER (MongoDB optional with safe in-memory fallback)
+# STORAGE LAYER (MongoDB with safe in-memory fallback)
 # ==============================================================================
 class Database:
     def __init__(self, uri: str) -> None:
@@ -413,9 +439,11 @@ class Database:
         self.users_col = None
         self.gstats_col = None
         self.chats_col = None
+        self.redeem_col = None
         self.mem_users: Dict[int, Dict[str, Any]] = {}
         self.mem_gstats: Dict[Tuple[int, int], Dict[str, Any]] = {}
         self.mem_chats: Dict[int, Dict[str, Any]] = {}
+        self.mem_redeem: Dict[str, Dict[str, Any]] = {}
         if uri and MongoClient is not None:
             try:
                 self.client = MongoClient(uri, serverSelectionTimeoutMS=5000)
@@ -424,9 +452,11 @@ class Database:
                 self.users_col = db["users"]
                 self.gstats_col = db["group_stats"]
                 self.chats_col = db["chats"]
+                self.redeem_col = db["redeem_codes"]
                 self.users_col.create_index("user_id", unique=True)
                 self.gstats_col.create_index([("chat_id", 1), ("user_id", 1)], unique=True)
                 self.chats_col.create_index("chat_id", unique=True)
+                self.redeem_col.create_index("code", unique=True)
                 self.use_mongo = True
                 logger.info("Connected to MongoDB successfully.")
             except Exception as exc:
@@ -455,6 +485,8 @@ class Database:
                         "streak": 0,
                         "best_streak": 0,
                         "biggest_win": 0,
+                        "referred_by": None,
+                        "referrals_count": 0,
                         "created_at": now,
                     }
                     self.users_col.insert_one(doc)
@@ -482,6 +514,8 @@ class Database:
                 "streak": 0,
                 "best_streak": 0,
                 "biggest_win": 0,
+                "referred_by": None,
+                "referrals_count": 0,
                 "created_at": now,
             }
         else:
@@ -496,6 +530,34 @@ class Database:
             except PyMongoError as exc:
                 logger.error("Mongo get_user error: %s", exc)
         return self.mem_users.get(user_id)
+
+    def apply_referral_once(self, new_user_id: int, referrer_id: int) -> bool:
+        if new_user_id == referrer_id or referrer_id <= 0:
+            return False
+        ref_doc = self.get_user(referrer_id)
+        if not ref_doc:
+            return False
+        user_doc = self.get_user(new_user_id)
+        if not user_doc or user_doc.get("referred_by") is not None:
+            return False
+        if self.use_mongo:
+            try:
+                res = self.users_col.update_one(
+                    {"user_id": new_user_id, "referred_by": None},
+                    {"$set": {"referred_by": referrer_id}},
+                )
+                if res.modified_count == 0:
+                    return False
+                self.users_col.update_one(
+                    {"user_id": referrer_id},
+                    {"$inc": {"referrals_count": 1}},
+                )
+                return True
+            except PyMongoError:
+                return False
+        user_doc["referred_by"] = referrer_id
+        ref_doc["referrals_count"] = int(ref_doc.get("referrals_count", 0)) + 1
+        return True
 
     def record_chat(self, chat_id: int, title: str, chat_type: str) -> None:
         safe_title = (title or "Chat").strip()[:60]
@@ -685,6 +747,100 @@ class Database:
         if user_id in self.mem_users:
             self.mem_users[user_id][field] = ts
 
+    # Redeem Code Methods (Owner sets code & coins; 1 claim per user; 24h validity)
+    def set_redeem_code(self, code: str, coins: int, created_by: int) -> Dict[str, Any]:
+        clean_code = code.strip()
+        now = time.time()
+        expires_at = now + REDEEM_EXPIRY_SEC
+        doc = {
+            "code": clean_code,
+            "coins": max(1, int(coins)),
+            "created_by": created_by,
+            "created_at": now,
+            "expires_at": expires_at,
+            "claimed_by": [],
+        }
+        if self.use_mongo:
+            try:
+                self.redeem_col.update_one(
+                    {"code": clean_code},
+                    {"$set": doc},
+                    upsert=True,
+                )
+            except PyMongoError as exc:
+                logger.error("Mongo set_redeem_code error: %s", exc)
+        self.mem_redeem[clean_code] = doc
+        return doc
+
+    def set_redeem_coins_for_latest(self, coins: int) -> Optional[Dict[str, Any]]:
+        safe_coins = max(1, int(coins))
+        latest_doc: Optional[Dict[str, Any]] = None
+        if self.use_mongo:
+            try:
+                latest_doc = self.redeem_col.find_one(sort=[("created_at", DESCENDING)])
+                if latest_doc:
+                    self.redeem_col.update_one(
+                        {"_id": latest_doc["_id"]},
+                        {"$set": {"coins": safe_coins}},
+                    )
+                    latest_doc["coins"] = safe_coins
+            except PyMongoError as exc:
+                logger.error("Mongo set_redeem_coins error: %s", exc)
+        if self.mem_redeem:
+            mem_latest = max(self.mem_redeem.values(), key=lambda x: float(x.get("created_at", 0.0)))
+            mem_latest["coins"] = safe_coins
+            if latest_doc is None:
+                latest_doc = mem_latest
+        return latest_doc
+
+    def get_redeem_code(self, code: str) -> Optional[Dict[str, Any]]:
+        clean_code = code.strip()
+        if self.use_mongo:
+            try:
+                doc = self.redeem_col.find_one({"code": clean_code})
+                if doc:
+                    return doc
+            except PyMongoError as exc:
+                logger.error("Mongo get_redeem_code error: %s", exc)
+        return self.mem_redeem.get(clean_code)
+
+    def claim_redeem_code(self, code: str, user_id: int) -> Tuple[bool, str, int]:
+        clean_code = code.strip()
+        doc = self.get_redeem_code(clean_code)
+        if not doc:
+            return False, "❌ Ye redeem code valid nahi hai ya exist nahi karta.", 0
+        now = time.time()
+        expires_at = float(doc.get("expires_at", float(doc.get("created_at", 0.0)) + REDEEM_EXPIRY_SEC))
+        if now > expires_at:
+            return False, "⏳ Ye redeem code expire ho chuka hai (24h validity khatam).", 0
+        claimed_by = list(doc.get("claimed_by", []))
+        if user_id in claimed_by:
+            return False, "⚠️ Tum is redeem code ko pehle hi claim kar chuke ho (1 user = 1 claim).", 0
+        reward_coins = int(doc.get("coins", 0))
+        if self.use_mongo:
+            try:
+                res = self.redeem_col.find_one_and_update(
+                    {
+                        "code": clean_code,
+                        "expires_at": {"$gt": now},
+                        "claimed_by": {"$ne": user_id},
+                    },
+                    {"$addToSet": {"claimed_by": user_id}},
+                    return_document=True,
+                )
+                if not res:
+                    return False, "⚠️ Code expire ho chuka hai ya tum pehle hi claim kar chuke ho.", 0
+                reward_coins = int(res.get("coins", reward_coins))
+            except PyMongoError as exc:
+                logger.error("Mongo claim_redeem_code error: %s", exc)
+                return False, "❌ Redeem process mein error aaya, thoda baad try karo.", 0
+        claimed_by.append(user_id)
+        if clean_code in self.mem_redeem:
+            self.mem_redeem[clean_code]["claimed_by"] = claimed_by
+        new_bal = self.adjust_coins(user_id, reward_coins)
+        bal_val = new_bal if new_bal is not None else reward_coins
+        return True, f"🎉 <b>Redeem Successful!</b> Tumhe <b>+{reward_coins}</b> coins mile!\n🪙 <b>Balance:</b> <code>{bal_val}</code>", reward_coins
+
     def global_top(self, limit: int = 10) -> List[Dict[str, Any]]:
         if self.use_mongo:
             try:
@@ -790,6 +946,7 @@ ACTIVE_MINES: Dict[Tuple[int, int], Dict[str, Any]] = {}
 ACTIVE_ROUNDS: Dict[str, Dict[str, Any]] = {}
 ROUNDS_BY_ID: Dict[str, Dict[str, Any]] = {}
 CHAT_ROUNDS: Dict[int, List[str]] = {}
+ACTIVE_TTT5: Dict[int, Dict[str, Any]] = {}
 
 
 def unregister_round(chat_id: int, round_id: str) -> None:
@@ -802,7 +959,13 @@ def unregister_round(chat_id: int, round_id: str) -> None:
         CHAT_ROUNDS.pop(chat_id, None)
 
 
-ACTIVE_TTT5: Dict[int, Dict[str, Any]] = {}
+def clear_bet_option_for_user(round_obj: Dict[str, Any], user_id: int) -> None:
+    bet_opt = round_obj.get("active_bet_option")
+    if isinstance(bet_opt, dict) and bet_opt.get("user_id") == user_id:
+        task = bet_opt.get("task")
+        if task and isinstance(task, asyncio.Task) and not task.done():
+            task.cancel()
+        round_obj["active_bet_option"] = None
 
 
 def mention_user(user_id: int, name: str, username: Optional[str] = None) -> str:
@@ -894,6 +1057,7 @@ async def stuck_game_watchdog(app: Application) -> None:
                     except (BadRequest, Forbidden, TelegramError):
                         pass
 
+        # Tic Tac Toe: only clean up if stuck/incomplete past TTT_MAX_AGE_SEC (300s / 5 min)
         stuck_ttt = [
             (cid, gobj)
             for cid, gobj in list(ACTIVE_TTT5.items())
@@ -959,15 +1123,41 @@ def help_text() -> str:
         "📖 <b>Quick Game &amp; Coin Guide</b>\n\n"
         "<b>🎯 Games</b>\n"
         "• <b>Aviator:</b> Group mein live cash-out round chalta hai; DM mein bet lagao aur target multiplier (<code>1.5x–10.0x</code>) guess karo — crash se pehle target touch hua toh win, <code>1.5x+</code> par crash ho toh safe 50% return, aur <code>1.5x</code> se pehle crash par loss.\n"
-        "• <b>Mines:</b> <code>2/4/5/7/9</code> bombs chuno, 💎 tiles kholo, kabhi bhi Cash Out karo.\n"
-        "• <b>Tic Tac Toe:</b> <code>3×3</code> (2–3P), <code>4×4</code> (2–4P), ya <code>5×5</code> (2–6P) board — <code>12s</code> join &amp; <code>15s</code> turn.\n"
-        "• <b>Coin Flip &amp; Rounds:</b> Choice chuno → bet lock karo (group mein min 2 players) → result + Replay/Menu.\n"
+        "• <b>Mines:</b> <code>2/4/5/7/9</code> bombs chuno, 💎 tiles kholo, kabhi bhi Cash Out ya Exit karo.\n"
+        "• <b>Tic Tac Toe:</b> <code>3×3</code> (2–3P), <code>4×4</code> (2–4P), ya <code>5×5</code> (2–6P) board — <code>12s</code> join &amp; <code>15s</code> turn (stuck ho toh 5m timeout).\n"
+        "• <b>Timer Rounds (15s):</b> Choice chuno → <code>2s</code> ke andar bet lock karo (na karne par auto-band taaki baaki log select kar sakein).\n"
         "• <b>Sports:</b> 4 options (🏀 Hoops, ⚽ Goal, 🎯 Bullseye, 🎳 Strike) + Replay / Modes / Menu.\n\n"
-        "<b>🪙 Coins &amp; Commands</b>\n"
+        "<b>🪙 Coins, Refer &amp; Redeem</b>\n"
         f"• <code>/daily</code> — <b>{DAILY_REWARD}</b> coins (har <code>24h</code>)\n"
         f"• <code>/refill</code> — <b>{REFILL_AMOUNT}</b> coins (har <code>30m</code>)\n"
-        "• <code>/profile</code> · <code>/bal</code> · <code>/give &lt;amt&gt;</code> · <code>/gtop</code> · <code>/top</code> · <code>/ref</code> · <code>/mines</code>"
+        f"• <code>/ref</code> — Invite link (+<b>{REFERRAL_BONUS_COINS}</b> bonus)\n"
+        "• <code>/redeem &lt;code&gt;</code> — Special redeem code claim (1x per user, 24h valid)\n"
+        "• <code>/profile</code> · <code>/bal</code> · <code>/give &lt;amt&gt;</code> · <code>/gtop</code> · <code>/top</code> · <code>/mines</code>"
     )
+
+
+def format_referral_card(user_id: int, name: str, bot_username: Optional[str] = None) -> str:
+    u = db.get_user(user_id) or {}
+    ref_count = int(u.get("referrals_count", 0))
+    uname = (bot_username or BOT_USERNAME or "your_bot").strip().lstrip("@")
+    link = f"https://t.me/{uname}?start={user_id}"
+    return (
+        f"👥 <b>Refer &amp; Earn Program</b>\n"
+        f"• <b>Your Invite Link:</b>\n<code>{link}</code>\n"
+        f"• <b>Bonus:</b> <b>+{REFERRAL_BONUS_COINS}</b> coins per valid referral\n"
+        f"• <b>Total Referrals:</b> <code>{ref_count}</code>"
+    )
+
+
+def referral_keyboard(user_id: int, bot_username: Optional[str] = None) -> InlineKeyboardMarkup:
+    uname = (bot_username or BOT_USERNAME or "").strip().lstrip("@")
+    rows: List[List[InlineKeyboardButton]] = []
+    if uname:
+        share_url = f"https://t.me/share/url?url=https://t.me/{uname}?start={user_id}&text=Aao%20saath%20mein%20games%20khelein%20aur%20coins%20jeetein!"
+        rows.append([InlineKeyboardButton("📤 Share Invite Link", url=share_url)])
+        rows.append([InlineKeyboardButton("➕ Add Bot to Group", url=f"https://t.me/{uname}?startgroup=true")])
+    rows.append([stylish_btn("🏠 Menu", "back_menu", "muted")])
+    return InlineKeyboardMarkup(rows)
 
 
 # ==============================================================================
@@ -1023,6 +1213,7 @@ def format_profile_card(
     streak = int(u.get("streak", 0))
     best_streak = int(u.get("best_streak", 0))
     big_win = int(u.get("biggest_win", 0))
+    refs = int(u.get("referrals_count", 0))
     g_rank, top_rank, grp_rank, total_users = db.get_user_ranks(user_id, chat_id=chat_id)
     grp_line = f"• <b>Group Rank:</b> <code>#{grp_rank}</code>\n" if grp_rank is not None else ""
     return (
@@ -1035,7 +1226,8 @@ def format_profile_card(
         f"{grp_line}"
         f"• <b>Record:</b> <code>{won}W</code> / <code>{loss}L</code> (<code>{win_rate}%</code>)\n"
         f"• <b>Streak (Best):</b> <code>{streak}</code> (<code>{best_streak}</code>)\n"
-        f"• <b>Biggest Win:</b> <code>{big_win}</code>"
+        f"• <b>Biggest Win:</b> <code>{big_win}</code>\n"
+        f"• <b>Referrals:</b> <code>{refs}</code>"
     )
 
 
@@ -1253,11 +1445,12 @@ async def ttt_turn_watcher(app: Application, chat_id: int, expected_turn_num: in
     try:
         rem_turn = TTT_TURN_SECONDS
         while rem_turn > 0:
-            await asyncio.sleep(min(3, rem_turn))
-            rem_turn = max(0, rem_turn - 3)
+            await asyncio.sleep(min(5, rem_turn))
+            rem_turn = max(0, rem_turn - min(5, rem_turn))
             game = ACTIVE_TTT5.get(chat_id)
             if not game or game.get("status") != "active" or game.get("turn_num") != expected_turn_num:
                 return
+            # Only clean up if stuck/incomplete past 5 minutes (300s)
             if (time.time() - float(game.get("created_at", time.time()))) > TTT_MAX_AGE_SEC:
                 ACTIVE_TTT5.pop(chat_id, None)
                 return
@@ -1325,8 +1518,8 @@ async def ttt_join_countdown(app: Application, chat_id: int, message_id: int) ->
     try:
         rem_join = TTT_JOIN_SECONDS
         while rem_join > 0:
-            await asyncio.sleep(min(2, rem_join))
-            rem_join = max(0, rem_join - 2)
+            await asyncio.sleep(min(3, rem_join))
+            rem_join = max(0, rem_join - min(3, rem_join))
             game = ACTIVE_TTT5.get(chat_id)
             if not game or game.get("status") != "joining":
                 return
@@ -1436,6 +1629,7 @@ async def resolve_solo_game(
     mult = 0.0
     payout = 0
     outcome_text = ""
+    sport_pick = ""
 
     if game_key == "rps":
         bot_pick = random.choice(["rock", "paper", "scissor"])
@@ -1495,7 +1689,6 @@ async def resolve_solo_game(
             "strike": ("🎳", "Bowling Strike"),
         }
         sport_pick = random.choice(list(sport_sticker_map.keys()))
-        s_icon, s_label = sport_sticker_map[sport_pick]
         won = choice == sport_pick
         mult = 3.5 if won else 0.0
         outcome_text = f"{'🎉' if won else '💥'} {format_sports_anim(sport_pick, choice)}"
@@ -1515,7 +1708,6 @@ async def resolve_solo_game(
     else:
         final_bal = new_bal
 
-    solo_mids: List[int] = []
     if game_key in ("dice", "sports", "slots"):
         if game_key == "dice":
             d_emoji = "🎲"
@@ -1523,23 +1715,19 @@ async def resolve_solo_game(
             d_emoji = "🎰"
         else:
             emoji_map = {"hoops": "🏀", "goal": "⚽", "target": "🎯", "strike": "🎳"}
-            d_emoji = emoji_map.get(sport_pick if "sport_pick" in locals() else choice, "🏀")
+            d_emoji = emoji_map.get(sport_pick or choice, "🏀")
         try:
-            d_sent = await send_fn(dice_emoji=d_emoji)
-            if d_sent and getattr(d_sent, "message_id", None):
-                solo_mids.append(int(d_sent.message_id))
+            await send_fn(dice_emoji=d_emoji)
         except Exception:
             pass
 
-    res_msg = await send_fn(
+    await send_fn(
         f"{outcome_text}\n"
         f"💰 <b>Bet:</b> <code>{bet}</code> · <b>Payout:</b> <code>{payout}</code>\n"
         f"🪙 <b>Balance:</b> <code>{final_bal}</code>",
         parse_mode=ParseMode.HTML,
         reply_markup=post_game_keyboard(f"schoice:{game_key}:{choice}", f"pick_game:{game_key}"),
     )
-    if res_msg and getattr(res_msg, "message_id", None):
-        solo_mids.append(int(res_msg.message_id))
 
 
 def format_aviator_plane_bar(mult_val: float, crashed: bool = False, cashed_out: bool = False) -> str:
@@ -1629,9 +1817,8 @@ async def resolve_solo_aviator(
                     f"⏳ Plane ud raha hai...",
                     parse_mode=ParseMode.HTML,
                 )
-            except BadRequest as exc:
-                if "message is not modified" not in str(exc).lower():
-                    pass
+            except BadRequest:
+                pass
             except TelegramError:
                 pass
         await asyncio.sleep(AVIATOR_STEP_SEC)
@@ -1701,7 +1888,7 @@ async def resolve_solo_aviator(
 
 
 # ==============================================================================
-# GROUP 15s ROUNDS + SHARED BET SLOT + AVIATOR LIVE CASH-OUT FEED
+# GROUP 15s ROUNDS + 2s PER-USER BET OPTION + AVIATOR LIVE CASH-OUT FEED
 # ==============================================================================
 def format_locked_bets_text(round_obj: Dict[str, Any]) -> str:
     bets: Dict[int, Dict[str, Any]] = round_obj.get("bets", {})
@@ -1713,6 +1900,82 @@ def format_locked_bets_text(round_obj: Dict[str, Any]) -> str:
             f"• ✅ {mention_user(item.get('user_id', 0), item['name'], item.get('username'))} ne <code>{item['bet']}</code> coins par lock kar diya ({item['choice']})"
         )
     return "\n".join(lines)
+
+
+def get_round_remaining_sec(round_obj: Dict[str, Any]) -> int:
+    ends_at = float(round_obj.get("ends_at", time.time() + ROUND_SECONDS))
+    return max(0, int(round(ends_at - time.time())))
+
+
+def build_round_view(round_obj: Dict[str, Any], user_coins: int = 1000) -> Tuple[str, InlineKeyboardMarkup]:
+    rem = get_round_remaining_sec(round_obj)
+    game_key = round_obj["game"]
+    locked_txt = format_locked_bets_text(round_obj)
+
+    if game_key == "aviator":
+        header = f"🚀 <b>Aviator Group Round</b> (⏳ <code>{rem}s</code> left)\nApni bet lock karo!"
+        return f"{header}\n\n{locked_txt}", bet_amounts_keyboard(user_coins, f"rbet:{round_obj['id']}:flight")
+
+    bet_opt = round_obj.get("active_bet_option")
+    if isinstance(bet_opt, dict) and time.time() < float(bet_opt.get("expires_at", 0.0)):
+        opt_uid = int(bet_opt["user_id"])
+        opt_name = bet_opt["name"]
+        opt_choice = bet_opt["choice"]
+        rem_opt = max(0.1, round(float(bet_opt["expires_at"]) - time.time(), 1))
+        header = (
+            f"🎮 <b>{game_key.upper()} Round</b> (⏳ <code>{rem}s</code> round left)\n"
+            f"⚡ <b>{opt_name}</b> ne <b>{opt_choice}</b> chuna — Bet option <b>{rem_opt:.1f}s</b> ke liye khula hai!\n"
+            f"<i>(Click kar ke bet lock karo; na karne par apne aap band ho jayega)</i>"
+        )
+        kb = bet_amounts_keyboard(user_coins, f"rbet:{round_obj['id']}:{opt_choice}")
+        return f"{header}\n\n{locked_txt}", kb
+
+    theme_note = ""
+    if game_key == "slots" and round_obj.get("slot_theme") in SLOT_THEMES:
+        theme_note = f" · Theme: <b>{SLOT_THEMES[round_obj['slot_theme']][0]}</b>"
+    header = (
+        f"🎮 <b>{game_key.upper()} Round</b> (⏳ <code>{rem}s</code> left){theme_note}\n"
+        f"Apni choice chuno (<code>2s</code> bet window milega):"
+    )
+    return f"{header}\n\n{locked_txt}", game_choice_keyboard(game_key, round_obj["id"])
+
+
+async def _bet_option_2s_expiry(
+    app: Application,
+    chat_id: int,
+    round_id: str,
+    user_id: int,
+    token: int,
+) -> None:
+    try:
+        await asyncio.sleep(BET_OPTION_SECONDS)
+        round_obj = ROUNDS_BY_ID.get(round_id)
+        if not round_obj or round_obj.get("phase") == "done":
+            return
+        bet_opt = round_obj.get("active_bet_option")
+        if not isinstance(bet_opt, dict):
+            return
+        if int(bet_opt.get("user_id", 0)) != user_id or int(bet_opt.get("token", 0)) != token:
+            return
+        # 2s elapsed without locking bet -> close bet option automatically so others can pick
+        round_obj["active_bet_option"] = None
+        msg_id = round_obj.get("message_id")
+        if isinstance(msg_id, int) and msg_id > 0:
+            txt, kb = build_round_view(round_obj, user_coins=1000)
+            try:
+                await app.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=msg_id,
+                    text=txt,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=kb,
+                )
+            except (BadRequest, TelegramError):
+                pass
+    except asyncio.CancelledError:
+        return
+    except Exception as exc:
+        logger.debug("bet_option_2s_expiry error: %s", exc)
 
 
 def format_aviator_cashout_feed(flight_obj: Dict[str, Any]) -> str:
@@ -1728,6 +1991,7 @@ def format_aviator_cashout_feed(flight_obj: Dict[str, Any]) -> str:
 
 
 async def run_aviator_group_flight(app: Application, chat_id: int, round_obj: Dict[str, Any]) -> None:
+    clear_bet_option_for_user(round_obj, int((round_obj.get("active_bet_option") or {}).get("user_id", 0)))
     bets: Dict[int, Dict[str, Any]] = round_obj.get("bets", {})
     round_obj["phase"] = "flight"
     msg_id = round_obj["message_id"]
@@ -1872,6 +2136,11 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
     round_obj = ACTIVE_ROUNDS.get(round_id) or ROUNDS_BY_ID.get(round_id)
     if not round_obj or round_obj.get("id") != round_id or round_obj.get("phase") == "done":
         return
+    bet_opt = round_obj.get("active_bet_option")
+    if isinstance(bet_opt, dict) and bet_opt.get("task") and not bet_opt["task"].done():
+        bet_opt["task"].cancel()
+    round_obj["active_bet_option"] = None
+
     game_key = round_obj["game"]
     if game_key == "aviator":
         await run_aviator_group_flight(app, chat_id, round_obj)
@@ -2016,11 +2285,15 @@ async def finalize_group_round(app: Application, chat_id: int, round_id: str) ->
 
 async def group_round_timer_task(app: Application, chat_id: int, round_id: str) -> None:
     try:
-        remaining = ROUND_SECONDS
-        step = 3
-        while remaining > 0:
-            await asyncio.sleep(min(step, remaining))
-            remaining = max(0, remaining - step)
+        step = 4
+        while True:
+            round_obj = ACTIVE_ROUNDS.get(round_id) or ROUNDS_BY_ID.get(round_id)
+            if not round_obj or round_obj.get("id") != round_id or round_obj.get("phase") == "done":
+                return
+            rem = get_round_remaining_sec(round_obj)
+            if rem <= 0:
+                break
+            await asyncio.sleep(min(step, rem))
             round_obj = ACTIVE_ROUNDS.get(round_id) or ROUNDS_BY_ID.get(round_id)
             if not round_obj or round_obj.get("id") != round_id or round_obj.get("phase") == "done":
                 return
@@ -2030,16 +2303,9 @@ async def group_round_timer_task(app: Application, chat_id: int, round_id: str) 
             msg_id = round_obj.get("message_id")
             if not msg_id:
                 continue
-            if round_obj["game"] == "aviator":
-                kb = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
-                header = f"🚀 <b>Aviator Group Round</b> (⏳ <code>{remaining}s</code> left)\nApni bet lock karo!"
-            else:
-                kb = game_choice_keyboard(round_obj["game"], round_id)
-                header = f"🎮 <b>{round_obj['game'].upper()} Round</b> (⏳ <code>{remaining}s</code> left)\nChoice aur bet lock karo:"
-            new_txt = f"{header}\n\n{format_locked_bets_text(round_obj)}"
-            if round_obj.get("last_text") != new_txt or round_obj.get("last_rem") != remaining:
+            new_txt, kb = build_round_view(round_obj, user_coins=1000)
+            if round_obj.get("last_text") != new_txt:
                 round_obj["last_text"] = new_txt
-                round_obj["last_rem"] = remaining
                 try:
                     await app.bot.edit_message_text(
                         chat_id=chat_id,
@@ -2074,7 +2340,8 @@ async def start_group_round(
             parse_mode=ParseMode.HTML,
         )
         return
-    round_id = f"{abs(chat_id)}_{int(time.time() * 1000)}_{random.randint(10, 99)}"
+    now = time.time()
+    round_id = f"{abs(chat_id)}_{int(now * 1000)}_{random.randint(10, 99)}"
     round_obj: Dict[str, Any] = {
         "id": round_id,
         "chat_id": chat_id,
@@ -2082,32 +2349,25 @@ async def start_group_round(
         "phase": "bet" if game_key == "aviator" else "pick",
         "choices": {},
         "bets": {},
+        "active_bet_option": None,
+        "bet_opt_token": 0,
         "message_id": 0,
-        "created_at": time.time(),
+        "created_at": now,
+        "ends_at": now + ROUND_SECONDS,
     }
     ACTIVE_ROUNDS[round_id] = round_obj
     ROUNDS_BY_ID[round_id] = round_obj
     CHAT_ROUNDS.setdefault(chat_id, []).append(round_id)
 
-    if game_key == "aviator":
-        markup = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
-        msg = await send_fn(
-            f"🚀 <b>Aviator Group Round</b> ({ROUND_SECONDS}s entry)\n"
-            f"Started by <b>{starter_name}</b> — apni bet lock karo!\n\n"
-            f"{format_locked_bets_text(round_obj)}",
-            parse_mode=ParseMode.HTML,
-            reply_markup=markup,
-        )
-    else:
-        if game_key == "slots":
-            round_obj["slot_theme"] = random.choice(list(SLOT_THEMES.keys()))
-        msg = await send_fn(
-            f"🎮 <b>{game_key.upper()} Round</b> ({ROUND_SECONDS}s)\n"
-            f"Started by <b>{starter_name}</b> — pehle apni choice chuno:\n\n"
-            f"{format_locked_bets_text(round_obj)}",
-            parse_mode=ParseMode.HTML,
-            reply_markup=game_choice_keyboard(game_key, round_id),
-        )
+    if game_key == "slots":
+        round_obj["slot_theme"] = random.choice(list(SLOT_THEMES.keys()))
+
+    body_txt, markup = build_round_view(round_obj, user_coins=1000)
+    msg = await send_fn(
+        f"Started by <b>{starter_name}</b> ({ROUND_SECONDS}s window)\n{body_txt}",
+        parse_mode=ParseMode.HTML,
+        reply_markup=markup,
+    )
     if msg and getattr(msg, "message_id", None):
         round_obj["message_id"] = msg.message_id
     asyncio.create_task(group_round_timer_task(app, chat_id, round_id))
@@ -2121,13 +2381,27 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     u = update.effective_user
     chat = update.effective_chat
+    is_new = db.get_user(u.id) is None
     db.ensure_user(u.id, u.first_name, u.username)
     if chat:
         db.record_chat(chat.id, chat.title or u.first_name, chat.type)
+
+    ref_msg = ""
+    if context.args and is_new:
+        try:
+            ref_id = int(context.args[0].strip())
+            if db.apply_referral_once(u.id, ref_id):
+                db.adjust_coins(u.id, REFERRAL_BONUS_COINS)
+                db.adjust_coins(ref_id, REFERRAL_BONUS_COINS)
+                ref_msg = f"\n🎁 Referral bonus: Tumhe aur referrer dono ko <b>+{REFERRAL_BONUS_COINS}</b> coins mile!"
+        except ValueError:
+            pass
+
+    uname = BOT_USERNAME or (context.bot.username if context.bot else None)
     await update.message.reply_text(
-        f"👋 Namaste <b>{u.first_name}</b>! Game shuru karne ke liye neeche se mode chuno:",
+        f"👋 Namaste <b>{u.first_name}</b>! Game shuru karne ke liye neeche se mode chuno:{ref_msg}",
         parse_mode=ParseMode.HTML,
-        reply_markup=main_menu_keyboard(),
+        reply_markup=main_menu_keyboard(uname),
     )
 
 
@@ -2187,11 +2461,12 @@ async def cmd_ref(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message:
         return
     u = update.effective_user
-    uname = BOT_USERNAME or (context.bot.username or "your_bot")
-    link = f"https://t.me/{uname}?start={u.id}"
+    db.ensure_user(u.id, u.first_name, u.username)
+    uname = BOT_USERNAME or (context.bot.username if context.bot else None)
     await update.message.reply_text(
-        f"🔗 <b>Your Invite Link:</b>\n<code>{link}</code>",
+        format_referral_card(u.id, u.first_name, uname),
         parse_mode=ParseMode.HTML,
+        reply_markup=referral_keyboard(u.id, uname),
     )
 
 
@@ -2292,9 +2567,79 @@ async def cmd_mines(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     schedule_delete_messages(context.bot, chat_id, [m.message_id], STALE_UI_DELETE_SEC)
 
 
+async def cmd_redeem(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message:
+        return
+    u = update.effective_user
+    db.ensure_user(u.id, u.first_name, u.username)
+    if not context.args:
+        await update.message.reply_text("Use: <code>/redeem xyz</code>", parse_mode=ParseMode.HTML)
+        return
+    code_str = context.args[0].strip()
+    _, msg, _ = db.claim_redeem_code(code_str, u.id)
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
+
+
 # ==============================================================================
-# OWNER-ONLY COMMANDS
+# OWNER-ONLY COMMANDS (INCLUDING REDEEM CODE SETUP)
 # ==============================================================================
+async def cmd_redeemcode(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message or not is_owner(update.effective_user.id):
+        return
+    u = update.effective_user
+    if not context.args:
+        await update.message.reply_text(
+            "Use: <code>/redeemcode xyz</code> ya <code>/redeemcode xyz 1000</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    code_str = context.args[0].strip()
+    existing = db.get_redeem_code(code_str)
+    default_coins = int(existing.get("coins", 500)) if existing else 500
+    if len(context.args) >= 2:
+        try:
+            default_coins = max(1, int(context.args[1]))
+        except ValueError:
+            await update.message.reply_text("⚠️ Valid coins number daalo.", parse_mode=ParseMode.HTML)
+            return
+    doc = db.set_redeem_code(code_str, default_coins, u.id)
+    await update.message.reply_text(
+        f"🎟️ <b>Redeem Code Set!</b>\n"
+        f"• <b>Code:</b> <code>{doc['code']}</code>\n"
+        f"• <b>Coins:</b> <code>{doc['coins']}</code>\n"
+        f"• <b>Limit:</b> Ek user ke liye <b>1 baar</b>\n"
+        f"• <b>Validity:</b> <b>24 hours</b>",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def cmd_setredeemcoins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.effective_user or not update.message or not is_owner(update.effective_user.id):
+        return
+    if not context.args:
+        await update.message.reply_text("Use: <code>/setredeemcoins 1000</code>", parse_mode=ParseMode.HTML)
+        return
+    try:
+        coins_val = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("⚠️ Valid number daalo.", parse_mode=ParseMode.HTML)
+        return
+    if coins_val <= 0:
+        await update.message.reply_text("⚠️ Coins 0 se zyada rakho.", parse_mode=ParseMode.HTML)
+        return
+    updated = db.set_redeem_coins_for_latest(coins_val)
+    if not updated:
+        await update.message.reply_text("⚠️ Pehle <code>/redeemcode xyz</code> se code set karo.", parse_mode=ParseMode.HTML)
+        return
+    await update.message.reply_text(
+        f"🪙 <b>Redeem Coins Updated!</b>\n"
+        f"• <b>Code:</b> <code>{updated['code']}</code>\n"
+        f"• <b>Reward Coins:</b> <code>{updated['coins']}</code>\n"
+        f"• <b>Validity:</b> <b>24 hours</b> (1 claim per user)",
+        parse_mode=ParseMode.HTML,
+    )
+
+
 async def cmd_mycoins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.effective_user or not update.message or not is_owner(update.effective_user.id):
         return
@@ -2488,6 +2833,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     user_doc = db.ensure_user(u.id, u.first_name, u.username)
     if chat:
         db.record_chat(chat.id, chat.title or u.first_name, chat.type)
+    bot_uname = BOT_USERNAME or (context.bot.username if context.bot else None)
 
     async def reply_cb(
         text: str = "",
@@ -2526,10 +2872,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     await query.message.edit_text(
                         f"👋 Namaste <b>{u.first_name}</b>! Mode chuno:",
                         parse_mode=ParseMode.HTML,
-                        reply_markup=main_menu_keyboard(),
+                        reply_markup=main_menu_keyboard(bot_uname),
                     )
                 except (BadRequest, TelegramError):
                     pass
+            return
+
+        if data == "menu_refer":
+            await query.answer()
+            m_ref = await reply_cb(
+                format_referral_card(u.id, u.first_name, bot_uname),
+                reply_markup=referral_keyboard(u.id, bot_uname),
+            )
+            if m_ref and getattr(m_ref, "message_id", None):
+                schedule_delete_messages(context.application.bot, chat_id, [m_ref.message_id], STALE_UI_DELETE_SEC)
             return
 
         if data == "do_daily":
@@ -2713,7 +3069,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if data.startswith("stheme:"):
             round_id = data.split(":", 1)[1]
             round_obj = ROUNDS_BY_ID.get(round_id)
-            if not round_obj or round_obj.get("game") != "slots" or round_obj.get("phase") != "pick":
+            if not round_obj or round_obj.get("game") != "slots" or round_obj.get("phase") == "done":
                 await query.answer("Theme abhi badla nahi ja sakta.", show_alert=True)
                 return
             order = list(SLOT_THEMES.keys())
@@ -2722,17 +3078,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             round_obj["slot_theme"] = next_t
             await query.answer(f"Theme: {SLOT_THEMES[next_t][0]}")
             if query.message:
+                txt_st, kb_st = build_round_view(round_obj, user_coins=int(user_doc.get("coins", 1000)))
+                round_obj["last_text"] = txt_st
                 try:
-                    txt_st = (
-                        f"🎮 <b>SLOTS Round</b> ({ROUND_SECONDS}s) · Theme: <b>{SLOT_THEMES[next_t][0]}</b>\n"
-                        f"Choice aur bet lock karo:\n\n"
-                        f"{format_locked_bets_text(round_obj)}"
-                    )
-                    round_obj["last_text"] = txt_st
                     await query.message.edit_text(
                         txt_st,
                         parse_mode=ParseMode.HTML,
-                        reply_markup=game_choice_keyboard("slots", round_id),
+                        reply_markup=kb_st,
                     )
                 except (BadRequest, TelegramError):
                     pass
@@ -2741,20 +3093,42 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if data.startswith("rchoice:"):
             _, round_id, choice = data.split(":", 2)
             round_obj = ROUNDS_BY_ID.get(round_id)
-            if not round_obj or round_obj.get("phase") != "pick":
-                await query.answer("Round khatam ya bet stage mein hai.", show_alert=True)
+            if not round_obj or round_obj.get("phase") == "done" or get_round_remaining_sec(round_obj) <= 0:
+                await query.answer("Round khatam ho chuka hai.", show_alert=True)
                 return
+            if u.id in round_obj.get("bets", {}):
+                await query.answer("Tumhari bet is round mein pehle se lock hai!", show_alert=True)
+                return
+
+            # Cancel any previous 2s bet option timer before setting for this user
+            prev_opt = round_obj.get("active_bet_option")
+            if isinstance(prev_opt, dict) and prev_opt.get("task") and not prev_opt["task"].done():
+                prev_opt["task"].cancel()
+
+            token = int(round_obj.get("bet_opt_token", 0)) + 1
+            round_obj["bet_opt_token"] = token
+            expires_at = time.time() + BET_OPTION_SECONDS
+            task = asyncio.create_task(
+                _bet_option_2s_expiry(context.application, chat_id, round_id, u.id, token)
+            )
+            round_obj["active_bet_option"] = {
+                "user_id": u.id,
+                "name": u.first_name,
+                "choice": choice,
+                "expires_at": expires_at,
+                "token": token,
+                "task": task,
+            }
             round_obj["choices"][u.id] = {"name": u.first_name, "choice": choice}
-            await query.answer(f"Choice: {choice}")
-            bet_kb = bet_amounts_keyboard(int(user_doc.get("coins", 0)), f"rbet:{round_id}:{choice}")
+
+            await query.answer(f"{choice} chuna — 2s mein bet lock karo!")
             if query.message:
+                txt_v, kb_v = build_round_view(round_obj, user_coins=int(user_doc.get("coins", 1000)))
                 try:
                     await query.message.edit_text(
-                        f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)\n"
-                        f"<b>{u.first_name}</b> ne <b>{choice}</b> chuna — ab bet amount chuno:\n\n"
-                        f"{format_locked_bets_text(round_obj)}",
+                        txt_v,
                         parse_mode=ParseMode.HTML,
-                        reply_markup=bet_kb,
+                        reply_markup=kb_v,
                     )
                 except (BadRequest, TelegramError):
                     pass
@@ -2769,9 +3143,29 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 and round_obj.get("phase") == "flight"
                 and bool((round_obj.get("flight") or {}).get("active"))
             )
-            if not round_obj or (round_obj.get("phase") not in ("pick", "bet") and not is_mid_flight):
+            if not round_obj or (round_obj.get("phase") == "done" and not is_mid_flight):
                 await query.answer("Round khatam ho chuka hai.", show_alert=True)
                 return
+            if not is_mid_flight and get_round_remaining_sec(round_obj) <= 0:
+                await query.answer("Round ka time khatam ho gaya!", show_alert=True)
+                return
+
+            bet_opt = round_obj.get("active_bet_option")
+            if round_obj.get("game") != "aviator" and not is_mid_flight:
+                if not isinstance(bet_opt, dict) or time.time() > float(bet_opt.get("expires_at", 0.0)):
+                    round_obj["active_bet_option"] = None
+                    await query.answer("2s bet option band ho gaya! Pehle apni choice chuno.", show_alert=True)
+                    if query.message:
+                        txt_v, kb_v = build_round_view(round_obj, user_coins=1000)
+                        try:
+                            await query.message.edit_text(txt_v, parse_mode=ParseMode.HTML, reply_markup=kb_v)
+                        except (BadRequest, TelegramError):
+                            pass
+                    return
+                if int(bet_opt.get("user_id", 0)) != u.id:
+                    await query.answer(f"Abhi {bet_opt.get('name')} ka 2s bet option chal raha hai!", show_alert=True)
+                    return
+
             if u.id in round_obj["bets"]:
                 await query.answer("Tumhari bet pehle se lock hai!", show_alert=True)
                 return
@@ -2791,6 +3185,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 "choice": choice,
                 "bet": bet_amt,
             }
+            # Close this user's 2s bet option immediately after locking bet so others can pick
+            clear_bet_option_for_user(round_obj, u.id)
+
             flight_live = round_obj.get("flight")
             if round_obj.get("game") == "aviator" and flight_live and flight_live.get("active"):
                 flight_live["players"][u.id] = {
@@ -2803,18 +3200,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     "payout": 0,
                 }
             await query.answer(f"{bet_amt} coins lock!")
-            if query.message:
-                if round_obj["game"] == "aviator":
-                    kb = bet_amounts_keyboard(1000, f"rbet:{round_id}:flight")
-                    header = f"🚀 <b>Aviator Group Round</b> ({ROUND_SECONDS}s entry)\nApni bet lock karo!"
-                else:
-                    kb = game_choice_keyboard(round_obj["game"], round_id)
-                    header = f"🎮 <b>{round_obj['game'].upper()} Round</b> ({ROUND_SECONDS}s)\nBaaki members apni choice &amp; bet lock kar sakte hain:"
+            if query.message and not is_mid_flight:
+                txt_v, kb_v = build_round_view(round_obj, user_coins=1000)
+                round_obj["last_text"] = txt_v
                 try:
                     await query.message.edit_text(
-                        f"{header}\n\n{format_locked_bets_text(round_obj)}",
+                        txt_v,
                         parse_mode=ParseMode.HTML,
-                        reply_markup=kb,
+                        reply_markup=kb_v,
                     )
                 except (BadRequest, TelegramError):
                     pass
@@ -2900,6 +3293,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 await query.answer("Ye board sirf iske owner ka hai!", show_alert=True)
                 return
             idx = int(data.split(":", 1)[1])
+            if idx < 0 or idx >= 25:
+                return
             if idx in game["revealed"]:
                 await query.answer("Ye tile pehle hi khul chuka hai.")
                 return
@@ -3097,7 +3492,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 await query.answer(f"Abhi {cur_p['name']} ({cur_p['mark']}) ki turn hai!", show_alert=True)
                 return
             idx = int(data.split(":", 1)[1])
-            if game["board"][idx] is not None:
+            if idx < 0 or idx >= len(game["board"]) or game["board"][idx] is not None:
                 await query.answer("Ye box pehle se bhara hai!", show_alert=True)
                 return
             game["board"][idx] = cur_p["mark"]
@@ -3216,6 +3611,7 @@ MEMBER_COMMANDS = [
     BotCommand("daily", "Har 24h mein 2000 coins lein"),
     BotCommand("refill", "Har 30m mein 250 coins lein"),
     BotCommand("ref", "Apna invite link lein"),
+    BotCommand("redeem", "Redeem code claim karein"),
     BotCommand("give", "Reply karke coins bhejein"),
     BotCommand("gtop", "Group leaderboard dekhein"),
     BotCommand("top", "Global leaderboard dekhein"),
@@ -3255,10 +3651,13 @@ def main() -> None:
     app.add_handler(CommandHandler("daily", cmd_daily))
     app.add_handler(CommandHandler("refill", cmd_refill))
     app.add_handler(CommandHandler("ref", cmd_ref))
+    app.add_handler(CommandHandler("redeem", cmd_redeem))
     app.add_handler(CommandHandler("give", cmd_give))
     app.add_handler(CommandHandler("top", cmd_top))
     app.add_handler(CommandHandler("gtop", cmd_gtop))
     app.add_handler(CommandHandler("mines", cmd_mines))
+    app.add_handler(CommandHandler("redeemcode", cmd_redeemcode))
+    app.add_handler(CommandHandler("setredeemcoins", cmd_setredeemcoins))
     app.add_handler(CommandHandler("mycoins", cmd_mycoins))
     app.add_handler(CommandHandler("setmycoins", cmd_setmycoins))
     app.add_handler(CommandHandler("setmywins", cmd_setmywins))
